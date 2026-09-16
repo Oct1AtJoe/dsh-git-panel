@@ -196,6 +196,47 @@ function route(service: GitService) {
           json(res, value.ok ? { ok: true, value } : { ok: false, error: value.error ?? BAD_REQUEST })
           return
         }
+        case '/git-panel/set-credential': {
+          const host = field(payload, 'host')
+          const username = field(payload, 'username')
+          const password = field(payload, 'password')
+          if (!host || !username || !password) {
+            json(res, { ok: false, error: BAD_REQUEST }, 400)
+            return
+          }
+          try {
+            const { homedir } = await import('node:os')
+            const { join } = await import('node:path')
+            const { readFileSync, writeFileSync, existsSync } = await import('node:fs')
+            const credPath = join(homedir(), '.git-credentials')
+            const encodedUser = encodeURIComponent(username)
+            const encodedPass = encodeURIComponent(password)
+
+            let currentContent = existsSync(credPath) ? readFileSync(credPath, 'utf8') : ''
+            const lines = currentContent.split('\n').filter((l) => !l.includes(`@${host}`))
+            lines.push(`https://${encodedUser}:${encodedPass}@${host}`)
+            writeFileSync(credPath, lines.join('\n').trim() + '\n', 'utf8')
+
+            // 终极杀招：直接将已认证的 URL 写入当前工程的 origin，彻底绕过 GCM 的任何 OAuth 拦截
+            const remotes = await service.runner.run(['remote', 'get-url', 'origin'], root)
+            if (remotes.exitCode === 0 && remotes.stdout.trim().startsWith('http')) {
+              const uObj = new URL(remotes.stdout.trim())
+              uObj.username = encodedUser
+              uObj.password = encodedPass
+              await service.runner.run(['remote', 'set-url', 'origin', uObj.toString()], root)
+            }
+
+            // 自动关闭该域名的 GCM OAuth 劫持，无缝直连
+            await service.runner.run(['config', '--global', `credential.https://${host}.provider`, 'generic'], root)
+            await service.runner.run(['config', '--global', `credential.https://${host}.helper`, 'store'], root)
+            await service.runner.run(['config', '--global', `credential.https://${host}.modalPrompt`, 'false'], root)
+
+            json(res, { ok: true, value: '凭据已安全绑定至当前仓库！' })
+          } catch (e: any) {
+            json(res, { ok: false, error: { code: 'credential-failed', message: e?.message || '保存凭据失败' } })
+          }
+          return
+        }
         case '/git-panel/file-status': {
           const value = await service.fileStatus(root)
           json(res, value.ok ? { ok: true, value: value.value } : { ok: false, error: value.error ?? BAD_REQUEST })

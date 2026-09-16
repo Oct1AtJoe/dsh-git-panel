@@ -127,6 +127,10 @@ export class GitPanelApi {
     return post<OpResult>('/git-panel/sync', { path })
   }
 
+  setCredential(path: string, host: string, username: string, password: string) {
+    return post<OpResult>('/git-panel/set-credential', { path, host, username, password })
+  }
+
   stashList(path: string) {
     return post<OpResult>('/git-panel/stash-list', { path })
   }

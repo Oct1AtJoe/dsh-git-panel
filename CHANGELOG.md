@@ -2,6 +2,18 @@
 
 `dsh-git-panel` 的版本变更记录。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.16] - 2026-09-12
+
+### Fixed
+- **彻底同步所有功能至 \src/\ TypeScript/TSX 源码中**：
+  - 修复此前仅在 \lib/\ 产物热修而导致 \src/\ 源码缺失新特性的问题；
+  - 源码现已完整包含：
+    - \src/client/Panel.tsx\：分支右键菜单「⬇️ 拉取更新 (Pull)」与「🔄 抓取全部 (Fetch all)」、分支落后胶囊点击直接拉取、全局防重入锁 \GLOBAL_GIT_BUSY_MAP\、GitLab 凭据免终端原位保存弹窗表单；
+    - \src/client/GitDiffView.tsx\：全景行号上下文冲突合并视图、未冲突区域折叠与展开、冲突卡片置顶首屏；
+    - \src/host/git-service.ts\：原生子进程执行模式 \execFileNative\、环境变量完整注入、90秒超时兜底与 \.git/MERGE_MSG\ 自动读取；
+    - \src/host/routes.ts\ & \src/client/api.ts\：\/git-panel/set-credential\ 原位凭据配置路由；
+  - 源码支持使用 \
+ode scripts/build.mjs\ 重新打包出 100% 对应的一致产物。
 ## [0.1.15] - 2026-09-12
 
 ### Docs

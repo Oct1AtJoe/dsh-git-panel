@@ -5,8 +5,10 @@
  * @module dsh-git-panel/host/git-service
  */
 
+import { execFile as execFileNative } from 'node:child_process'
 import { readFile as readBytes, realpath, stat } from 'node:fs/promises'
-import { relative as relativePath, resolve as resolvePath, sep } from 'node:path'
+import { join, relative as relativePath, resolve as resolvePath, sep } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-subprocess'
 import type { SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
@@ -59,25 +61,51 @@ export type WorkspaceVerdict = { ok: true; canonical: string } | { ok: false; er
 /** 规范化路径并要求其等于一个已注册的工作区根目录。 */
 export type WorkspaceGate = (path: string) => Promise<WorkspaceVerdict>
 
-/** 基于 `ctx.subprocess` 的生产运行器。 */
-export function subprocessRunner(ctx: Context): GitRunner {
+/** 基于原生 child_process 的生产运行器，支持环境变量完整透传与网络超时。 */
+export function subprocessRunner(_ctx: Context): GitRunner {
   return {
     async run(argv, cwd) {
-      const spec: SubprocessSpawnSpec = {
-        argv: ['git', ...argv],
-        cwd,
-        stdio: {
-          stdin: 'ignore',
-          stdout: { maxBytes: OUTPUT_CAP_BYTES },
-          stderr: { maxBytes: OUTPUT_CAP_BYTES },
-        },
-        graceMs: 30_000,
-      }
-      const handle = ctx.subprocess.spawn(spec)
-      const outcome = await handle.done
-      const stdout = handle.collected.stdout?.readFrom(0).text ?? ''
-      const stderr = handle.collected.stderr?.readFrom(0).text ?? ''
-      return { exitCode: outcome.exitCode, stdout, stderr }
+      return new Promise((resolve) => {
+        // 核心透传：强制将当前真实用户 Administrator 的凭据目录与配置注入环境，
+        // 确保后台读取到本地已有的 git 认证与 SSH keys，与外部终端 100% 表现一致！
+        const userProfile = process.env.USERPROFILE || 'C:\\Users\\Administrator'
+        const env = {
+          ...process.env,
+          USERPROFILE: userProfile,
+          HOME: userProfile,
+          APPDATA: process.env.APPDATA || `${userProfile}\\AppData\\Roaming`,
+          LOCALAPPDATA: process.env.LOCALAPPDATA || `${userProfile}\\AppData\\Local`,
+          GIT_TERMINAL_PROMPT: '0',
+          GCM_INTERACTIVE: 'never',
+          GCM_MODAL_PROMPT: 'false',
+          // 核心修复：局域网/企业私有 GitLab 绝不走 7890 代理，内网直连秒速完成！
+          NO_PROXY: '*sjfood.us,localhost,127.0.0.1',
+          no_proxy: '*sjfood.us,localhost,127.0.0.1',
+        }
+        // 充裕合理的 90 秒网络超时：给多分支与大体积提交留足下载空间
+        const isNetworkOp = argv.includes('pull') || argv.includes('fetch') || argv.includes('push') || argv.includes('clone')
+        const timeout = isNetworkOp ? 90000 : 20000
+
+        execFileNative('git', argv as string[], { cwd, maxBuffer: OUTPUT_CAP_BYTES, windowsHide: true, env, timeout }, (err, stdout, stderr) => {
+          if (err) {
+            let errMsg = stderr ? stderr.toString() : (err.message || String(err))
+            if ((err as any).killed) {
+              errMsg = '⚠️ 操作超时（超过90秒）：网络连接缓慢或远程服务器无响应，请稍后重试或检查代理。'
+            }
+            resolve({
+              exitCode: typeof (err as any).code === 'number' ? (err as any).code : 1,
+              stdout: stdout ? stdout.toString() : '',
+              stderr: errMsg,
+            })
+          } else {
+            resolve({
+              exitCode: 0,
+              stdout: stdout ? stdout.toString() : '',
+              stderr: stderr ? stderr.toString() : '',
+            })
+          }
+        })
+      })
     },
   }
 }
@@ -106,7 +134,7 @@ function splitRecords(text: string): string[] {
 /** 以工作区为边界约束的 git 服务。 */
 export class GitService {
   constructor(
-    private readonly runner: GitRunner,
+    public readonly runner: GitRunner,
     private readonly gate: WorkspaceGate,
   ) {}
 
@@ -279,8 +307,8 @@ export class GitService {
     return { ok: true, output: run.stdout.trim() }
   }
 
-  /** 工作区状态摘要：变更文件列表（git status --porcelain）。 */
-  async status(path: string): Promise<{ ok: boolean; output: string; error?: { code: string; message: string } }> {
+  /** 工作区状态摘要：变更文件列表（git status --porcelain）并自动读取 MERGE_MSG。 */
+  async status(path: string): Promise<{ ok: boolean; output: string; mergeMsg?: string; error?: { code: string; message: string } }> {
     const canonical = await this.requireWorkspace(path)
     const run = await this.runner.run(['status', '--porcelain'], canonical)
     if (run.exitCode !== 0) {
@@ -289,7 +317,20 @@ export class GitService {
     const lines = run.stdout.split('\n').filter((l) => l.trim() !== '')
     // 精简：状态码 + 路径（中文路径保留）。
     const output = lines.map((l) => l.replace(/^(\S+)\s+(.+)$/, '$1  $2')).join('\n')
-    return { ok: true, output }
+
+    // 像 VS Code 一样：检查是否有 .git/MERGE_MSG 并自动读取
+    let mergeMsg = ''
+    try {
+      const revTop = await this.runner.run(['rev-parse', '--git-dir'], canonical)
+      const gitDir = revTop.exitCode === 0 ? revTop.stdout.trim() : '.git'
+      const fullGitDir = gitDir.startsWith('/') || /^[a-zA-Z]:/.test(gitDir) ? gitDir : join(canonical, gitDir)
+      const mergeMsgPath = join(fullGitDir, 'MERGE_MSG')
+      if (existsSync(mergeMsgPath)) {
+        mergeMsg = readFileSync(mergeMsgPath, 'utf8').split('\n')[0].trim()
+      }
+    } catch {}
+
+    return { ok: true, output, mergeMsg }
   }
 
   /** 单个文件暂存（git add -- <file>）。 */

@@ -134,28 +134,54 @@ function ensureStyle(): void {
   document.head.appendChild(tag)
 }
 
-/** 将文本安全追加/填入当前会话的输入框（支持 React 受控组件） */
+/** 将文本安全追加/填入当前会话的输入框（支持 Lexical 富文本与 React 受控组件） */
 function injectTextToChatInput(text: string): boolean {
-  const ta = document.querySelector<HTMLTextAreaElement>('textarea[data-phase], [data-composer-card] textarea, textarea')
-  if (!ta) return false
-  const proto = Object.getPrototypeOf(ta)
-  const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set ||
-                       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
-  const cur = ta.value || ''
-  const next = cur ? `${cur}\n\n${text}` : text
-  if (nativeSetter) {
-    nativeSetter.call(ta, next)
-  } else {
-    ta.value = next
+  const el = document.querySelector<HTMLElement>('[contenteditable="true"], [data-lexical-editor="true"], [role="textbox"], textarea')
+  if (!el) return false
+  el.focus()
+
+  if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
+    const proto = Object.getPrototypeOf(el)
+    const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set ||
+                         Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+    const cur = el.value || ''
+    const next = cur ? `${cur}\n\n${text}` : text
+    if (nativeSetter) {
+      nativeSetter.call(el, next)
+    } else {
+      el.value = next
+    }
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+    el.dispatchEvent(new Event('change', { bubbles: true }))
+    el.selectionStart = el.value.length
+    el.selectionEnd = el.value.length
+    return true
   }
-  ta.dispatchEvent(new Event('input', { bubbles: true }))
-  ta.dispatchEvent(new Event('change', { bubbles: true }))
-  ta.focus()
-  // 滚动到输入框光标末尾
-  ta.selectionStart = ta.value.length
-  ta.selectionEnd = ta.value.length
+
+  const sel = window.getSelection()
+  if (sel) {
+    const range = document.createRange()
+    range.selectNodeContents(el)
+    range.collapse(false)
+    sel.removeAllRanges()
+    sel.addRange(range)
+  }
+
+  const prefix = el.textContent && el.textContent.trim() !== '' ? '\n\n' : ''
+  const success = document.execCommand('insertText', false, prefix + text)
+  if (!success) {
+    el.dispatchEvent(new InputEvent('beforeinput', {
+      bubbles: true,
+      cancelable: true,
+      inputType: 'insertText',
+      data: prefix + text,
+    }))
+  }
   return true
 }
+
+/** 全局常驻操作状态字典：按工作区路径 path 保持 busy 和 message 状态 */
+export const GLOBAL_GIT_BUSY_MAP = new Map<string, { busy?: boolean; message?: { text: string; kind: 'ok' | 'err'; showAuthForm?: boolean } | null }>()
 
 /** GitLens 风格的分支行（双行信息分层）：双击激活，右键打开菜单。 */
 const BranchRowView = memo(function BranchRowView(props: {
@@ -164,14 +190,30 @@ const BranchRowView = memo(function BranchRowView(props: {
   current?: string
   busy: boolean
   onActivate: (branch: string) => void
+  onPull?: () => void
   onContextMenu: (event: React.MouseEvent, row: BranchRow, isRemote: boolean) => void
 }): React.ReactElement {
-  const { row, isRemote, current, busy, onActivate, onContextMenu } = props
+  const { row, isRemote, current, busy, onActivate, onPull, onContextMenu } = props
   const t = useT()
   const isCurrent = !isRemote && row.name === current
   const badges = [
     !isRemote && row.ahead ? <span key="a" className="dsh-gp-badge ahead">↑{row.ahead}</span> : null,
-    !isRemote && row.behind ? <span key="b" className="dsh-gp-badge behind">↓{row.behind}</span> : null,
+    !isRemote && row.behind ? (
+      <span
+        key="b"
+        className={`dsh-gp-badge behind ${busy && isCurrent ? 'busy' : ''}`}
+        style={{ cursor: isCurrent && !busy ? 'pointer' : 'default' }}
+        title={busy && isCurrent ? '正在拉取更新中...' : `落后上游 ${row.behind} 个提交，点击立即拉取更新 (git pull)`}
+        onClick={(e) => {
+          if (isCurrent && !busy && onPull) {
+            e.stopPropagation()
+            onPull()
+          }
+        }}
+      >
+        ↓{row.behind}
+      </span>
+    ) : null,
     isCurrent ? <span key="c" className="dsh-gp-badge current">{t('badge.current')}</span> : null,
   ]
   const dateText = row.date ? row.date.slice(5, 16).replace('T', ' ') : ''
@@ -611,8 +653,28 @@ export function GitPanel(props: {
   const [loading, setLoading] = useState(false)
   // 对进行中的加载做单调递增保护（见 load()）。
   const loadSeq = useRef(0)
-  const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null)
+  const [busy, setBusyState] = useState(() => GLOBAL_GIT_BUSY_MAP.get(path)?.busy ?? false)
+  const [message, setMessageState] = useState<{ text: string; kind: 'ok' | 'err'; showAuthForm?: boolean } | null>(() => GLOBAL_GIT_BUSY_MAP.get(path)?.message ?? null)
+
+  const setBusy = (val: boolean): void => {
+    setBusyState(val)
+    const cur = GLOBAL_GIT_BUSY_MAP.get(path) || {}
+    GLOBAL_GIT_BUSY_MAP.set(path, { ...cur, busy: val })
+  }
+  const setMessage = (msg: { text: string; kind: 'ok' | 'err'; showAuthForm?: boolean } | null): void => {
+    setMessageState(msg)
+    const cur = GLOBAL_GIT_BUSY_MAP.get(path) || {}
+    GLOBAL_GIT_BUSY_MAP.set(path, { ...cur, message: msg })
+  }
+
+  // 会话切换回来时，若全局正在执行后台操作，恢复视图上的状态
+  useEffect(() => {
+    const globalState = GLOBAL_GIT_BUSY_MAP.get(path)
+    if (globalState) {
+      if (globalState.busy !== undefined) setBusyState(globalState.busy)
+      if (globalState.message !== undefined) setMessageState(globalState.message)
+    }
+  }, [path])
   const [width, setWidth] = useState(300)
   // 右键上下文菜单。
   const [menu, setMenu] = useState<{
@@ -719,7 +781,13 @@ export function GitPanel(props: {
       void load()
       onRefreshStatus?.()
     } else {
-      setMessage({ text: result.error?.message ?? t('op.failed'), kind: 'err' })
+      let errMsg = result.error?.message ?? t('op.failed')
+      let showAuthForm = false
+      if (errMsg.includes('OAuth') || errMsg.includes('Authentication') || errMsg.includes('fatal: could not read Username') || errMsg.includes('terminal prompts disabled')) {
+        errMsg = '⚠️ 缺少 GitLab 访问凭据或认证失败，请在下方直接输入账号密码即可一键保存：'
+        showAuthForm = true
+      }
+      setMessage({ text: errMsg, kind: 'err', showAuthForm })
     }
   }, [path, api, busy, commitMsg, t, refreshStatus, load, onRefreshStatus])
 
@@ -752,16 +820,24 @@ export function GitPanel(props: {
 
   const runOp = useCallback(async (label: string, op: () => Promise<Envelope<OpResult>>): Promise<void> => {
     setBusy(true)
-    setMessage(null)
+    setMessage({ text: `⏳ 正在执行 ${label}...`, kind: 'ok' })
     const result = await op()
     if (result.ok) {
       setMessage({ text: result.value.output || t('op.done', { label }), kind: 'ok' })
       await load()
     } else {
-      setMessage({ text: result.error.message, kind: 'err' })
+      let errMsg = result.error.message || '操作失败'
+      let showAuthForm = false
+      if (errMsg.includes('OAuth') || errMsg.includes('Authentication') || errMsg.includes('fatal: could not read Username') || errMsg.includes('terminal prompts disabled')) {
+        errMsg = '⚠️ 缺少 GitLab 访问凭据或认证失败，请在下方直接输入账号密码即可一键保存：'
+        showAuthForm = true
+      } else if (errMsg.includes('timed out') || errMsg.includes('超时')) {
+        errMsg = '⚠️ 操作超时：网络连接失败或远程服务器无响应。'
+      }
+      setMessage({ text: errMsg, kind: 'err', showAuthForm })
     }
     setBusy(false)
-  }, [load])
+  }, [load, t])
 
   const repoName = branches?.repo ?? ''
 
@@ -1067,7 +1143,82 @@ export function GitPanel(props: {
         {!loading && message && !branches && !graph ? (
           <div className="dsh-gp-warn">{message.text}</div>
         ) : null}
-        {message && (branches || graph) ? <div className={`dsh-gp-msg ${message.kind}`}>{message.text}</div> : null}
+        {message && (branches || graph) ? (
+          <div className={`dsh-gp-msg ${message.kind}`}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+              <span>{message.text}</span>
+              {busy ? (
+                <button
+                  type="button"
+                  className="dsh-gp-btn"
+                  style={{ fontSize: 10, padding: '1px 6px', flex: 'none' }}
+                  onClick={() => {
+                    setBusy(false)
+                    setMessage({ text: '已取消当前操作等待', kind: 'ok' })
+                  }}
+                >
+                  ✕ 取消
+                </button>
+              ) : null}
+            </div>
+            {message.showAuthForm ? (
+              <div style={{
+                background: 'rgba(128,128,128,0.12)',
+                padding: 8,
+                borderRadius: 6,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                marginTop: 4,
+              }}>
+                <div style={{ fontWeight: 600, fontSize: 11 }}>🔑 在此原位配置 Git 访问凭据（免终端配置，自动保存）：</div>
+                <input
+                  id="dsh-git-auth-user"
+                  className="dsh-gp-input"
+                  placeholder="用户名（或邮箱前缀，如 jaden.tang）"
+                  defaultValue="jaden.tang"
+                />
+                <input
+                  id="dsh-git-auth-pass"
+                  type="password"
+                  className="dsh-gp-input"
+                  placeholder="密码或 GitLab Personal Access Token"
+                />
+                <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 2 }}>
+                  <button
+                    type="button"
+                    className="dsh-gp-btn"
+                    onClick={async () => {
+                      const u = (document.getElementById('dsh-git-auth-user') as HTMLInputElement)?.value.trim()
+                      const p = (document.getElementById('dsh-git-auth-pass') as HTMLInputElement)?.value.trim()
+                      if (!u || !p) {
+                        alert('请填写用户名和密码/Token')
+                        return
+                      }
+                      setMessage({ text: '正在保存凭据并自动配置...', kind: 'ok' })
+                      const res = await api.setCredential(path, 'gitlab.sjfood.us', u, p)
+                      if (res.ok) {
+                        setMessage({ text: '✅ 凭据已成功保存！正在自动为您重试拉取/同步...', kind: 'ok' })
+                        void runOp(t('op.pull'), () => api.pull(path))
+                      } else {
+                        setMessage({ text: `保存失败: ${res.error?.message}`, kind: 'err' })
+                      }
+                    }}
+                  >
+                    💾 记住凭据并立即重试
+                  </button>
+                  <button
+                    type="button"
+                    className="dsh-gp-btn"
+                    onClick={() => setMessage(null)}
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {tab === 'branches' && branches ? (
           <>
@@ -1094,6 +1245,7 @@ export function GitPanel(props: {
                       current={branches.current}
                       busy={busy}
                       onActivate={activateLocal}
+                      onPull={() => void runOp(t('op.pull'), () => api.pull(path))}
                       onContextMenu={openMenu}
                     />
                   ))}
@@ -1176,6 +1328,30 @@ export function GitPanel(props: {
                   }
                   closeMenu()
                 }}>{t('menu.copyName')}</div>
+                {menu.isCurrent ? (
+                  <div
+                    className={`dsh-gp-menu-item ${busy ? 'disabled' : ''}`}
+                    style={busy ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
+                    onClick={() => {
+                      if (busy) return
+                      closeMenu()
+                      void runOp(t('op.pull'), () => api.pull(path))
+                    }}
+                  >
+                    {busy ? '⏳ 正在同步中...' : '⬇️ 拉取更新 (Pull)'}
+                  </div>
+                ) : null}
+                <div
+                  className={`dsh-gp-menu-item ${busy ? 'disabled' : ''}`}
+                  style={busy ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
+                  onClick={() => {
+                    if (busy) return
+                    closeMenu()
+                    void runOp(t('fetch.all'), () => api.fetchAll(path))
+                  }}
+                >
+                  {busy ? '⏳ 正在同步中...' : '🔄 抓取全部 (Fetch all)'}
+                </div>
                 <div className="dsh-gp-menu-item" onClick={() => setMenuMode('rename')}>{t('menu.rename')}</div>
                 {!menu.isCurrent && !menu.isRemote ? (
                   <div className="dsh-gp-menu-item danger" onClick={() => setMenuMode('confirm-delete')}>{t('menu.delete')}</div>

@@ -496,7 +496,7 @@ function renderUnifiedRow(row: DiffRow, key: string): React.ReactElement {
   )
 }
 
-/** 冲突面板：逐块给出三方选择。 */
+/** 冲突面板：全景行号上下文合并视图（首屏即是靶心，未冲突区域智能折叠）。 */
 function renderConflicts(
   conflicts: readonly ConflictBlock[],
   working: string,
@@ -504,42 +504,265 @@ function renderConflicts(
   setNote: (note: { text: string; kind: 'ok' | 'err' } | null) => void,
 ): React.ReactElement {
   if (conflicts.length === 0) {
-    return createElement('div', { className: 'dsh-gd-empty ok' }, '✓ 当前文件没有检测到合并冲突标记')
+    return createElement('div', { className: 'dsh-gd-empty ok' }, '✓ 本文件所有冲突已全部解决！请点击右上角「保存」写回文件。')
   }
-  return createElement('div', { className: 'dsh-gd-conflicts' },
-    createElement('div', { className: 'dsh-gd-conflict-hint' }, '逐块选择要保留的内容；处理完点右上角「保存」写回文件。'),
-    conflicts.map((block, index) => createElement('div', { className: 'dsh-gd-conflict', key: `${block.start}-${block.middle}` },
-      createElement('div', { className: 'dsh-gd-conflict-head' },
-        createElement('span', null, `冲突 ${index + 1} · 行 ${block.start + 1}–${block.end + 1}`),
-        createElement('span', { className: 'dsh-gd-spacer' }),
-        createElement('button', {
-          type: 'button',
-          className: 'dsh-gd-btn',
-          onClick: () => { setWorking(applyResolution(working, block, 'ours')); setNote(null) },
-        }, '保留当前更改'),
-        createElement('button', {
-          type: 'button',
-          className: 'dsh-gd-btn',
-          onClick: () => { setWorking(applyResolution(working, block, 'theirs')); setNote(null) },
-        }, `保留传入更改 (${block.label})`),
-        createElement('button', {
-          type: 'button',
-          className: 'dsh-gd-btn',
-          onClick: () => { setWorking(applyResolution(working, block, 'both')); setNote(null) },
-        }, '两者都保留'),
-      ),
-      createElement('div', { className: 'dsh-gd-conflict-panes' },
-        createElement('div', { className: 'dsh-gd-conflict-pane ours' },
-          createElement('div', { className: 'dsh-gd-conflict-title' }, 'HEAD / 当前分支'),
-          createElement('pre', null, block.ours === '' ? '（空）' : block.ours),
-        ),
-        createElement('div', { className: 'dsh-gd-conflict-pane theirs' },
-          createElement('div', { className: 'dsh-gd-conflict-title' }, `传入 / ${block.label}`),
-          createElement('pre', null, block.theirs === '' ? '（空）' : block.theirs),
-        ),
-      ),
-    )),
+
+  const lines = working.split('\n')
+  const CONTEXT_AROUND = 8 // 冲突上下各保留 8 行紧邻完整上下文代码
+  const elements: React.ReactElement[] = []
+  let lineIdx = 0
+
+  elements.push(
+    createElement(
+      'div',
+      {
+        className: 'dsh-gd-conflict-hint',
+        key: 'hint',
+        style: {
+          padding: '8px 12px',
+          background: 'rgba(210, 153, 34, 0.12)',
+          borderBottom: '1px solid rgba(210, 153, 34, 0.25)',
+          color: 'var(--fg)',
+          fontSize: 12,
+        },
+      },
+      '💡 提示：冲突核心与紧邻代码已直接置于首屏！逐块点击按钮合并冲突，处理完点击右上角「保存」写回磁盘。',
+    ),
   )
+
+  for (let cIdx = 0; cIdx < conflicts.length; cIdx += 1) {
+    const block = conflicts[cIdx]
+
+    // 1. 如果离上一个冲突块较远，折叠远处的无关代码
+    const contextStart = Math.max(lineIdx, block.start - CONTEXT_AROUND)
+    if (contextStart > lineIdx) {
+      const skippedCount = contextStart - lineIdx
+      const fromLine = lineIdx + 1
+      const toLine = contextStart
+      elements.push(
+        createElement(
+          'div',
+          {
+            className: 'dsh-gd-gap',
+            key: `gap-before-${cIdx}`,
+            style: {
+              padding: '6px 12px',
+              margin: '4px 0',
+              background: 'rgba(128,128,128,0.08)',
+              borderRadius: 4,
+              fontSize: 11,
+              color: 'var(--muted)',
+              cursor: 'pointer',
+              textAlign: 'center',
+            },
+            title: '点击查看完整历史代码',
+            onClick: () => {
+              const el = document.getElementById(`gap-body-${cIdx}`)
+              if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'
+            },
+          },
+          `↕️ 已折叠上方第 ${fromLine}–${toLine} 行未冲突代码 (${skippedCount} 行)`,
+        ),
+        createElement(
+          'div',
+          {
+            id: `gap-body-${cIdx}`,
+            key: `gap-body-content-${cIdx}`,
+            style: { display: 'none' },
+          },
+          lines.slice(lineIdx, contextStart).map((lText, i) => {
+            const num = lineIdx + i + 1
+            return createElement(
+              'div',
+              { className: 'dsh-gd-row normal', key: `line-${num}` },
+              createElement('span', { className: 'dsh-gd-marker' }, ' '),
+              createElement('span', { className: 'dsh-gd-num' }, String(num)),
+              createElement('span', { className: 'dsh-gd-txt', style: { whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, monospace' } }, lText),
+            )
+          }),
+        ),
+      )
+      lineIdx = contextStart
+    }
+
+    // 2. 渲染冲突上方的 8 行紧邻上下文代码
+    while (lineIdx < block.start) {
+      const num = lineIdx + 1
+      const text = lines[lineIdx] ?? ''
+      elements.push(
+        createElement(
+          'div',
+          { className: 'dsh-gd-row normal', key: `line-${num}` },
+          createElement('span', { className: 'dsh-gd-marker' }, ' '),
+          createElement('span', { className: 'dsh-gd-num' }, String(num)),
+          createElement('span', { className: 'dsh-gd-txt', style: { whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, monospace' } }, text),
+        ),
+      )
+      lineIdx += 1
+    }
+
+    // 3. 渲染冲突核心卡片（首屏即是靶心！）
+    elements.push(
+      createElement(
+        'div',
+        {
+          id: `conflict-block-${cIdx}`,
+          className: 'dsh-gd-conflict-block',
+          key: `conflict-${block.start}-${block.middle}`,
+          style: {
+            margin: '8px 0',
+            border: '1px solid var(--danger, #ef4444)',
+            borderRadius: 6,
+            overflow: 'hidden',
+            background: 'rgba(239, 68, 68, 0.04)',
+          },
+        },
+        createElement(
+          'div',
+          {
+            className: 'dsh-gd-conflict-head',
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 10px',
+              background: 'rgba(239, 68, 68, 0.12)',
+              borderBottom: '1px solid rgba(239, 68, 68, 0.2)',
+              fontSize: 11.5,
+            },
+          },
+          createElement('span', { style: { fontWeight: 600, color: 'var(--danger, #ef4444)' } }, `⚠️ 冲突 ${cIdx + 1} / ${conflicts.length} · 行 ${block.start + 1}–${block.end + 1}`),
+          createElement('span', { className: 'dsh-gd-spacer', style: { flex: 1 } }),
+          createElement(
+            'button',
+            {
+              type: 'button',
+              className: 'dsh-gd-btn',
+              style: { padding: '3px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 },
+              onClick: () => {
+                setWorking(applyResolution(working, block, 'ours'))
+                setNote({ text: `已采用当前更改 (行 ${block.start + 1})`, kind: 'ok' })
+              },
+            },
+            '✔ 采用当前更改 (HEAD)',
+          ),
+          createElement(
+            'button',
+            {
+              type: 'button',
+              className: 'dsh-gd-btn',
+              style: { padding: '3px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 },
+              onClick: () => {
+                setWorking(applyResolution(working, block, 'theirs'))
+                setNote({ text: `已采用传入更改 (${block.label})`, kind: 'ok' })
+              },
+            },
+            `✔ 采用传入更改 (${block.label})`,
+          ),
+          createElement(
+            'button',
+            {
+              type: 'button',
+              className: 'dsh-gd-btn',
+              style: { padding: '3px 8px', fontSize: 11, cursor: 'pointer' },
+              onClick: () => {
+                setWorking(applyResolution(working, block, 'both'))
+                setNote({ text: '已保留双方更改', kind: 'ok' })
+              },
+            },
+            '✔ 两者都保留',
+          ),
+        ),
+        createElement(
+          'div',
+          { className: 'dsh-gd-conflict-panes', style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: 'rgba(128,128,128,0.15)' } },
+          createElement(
+            'div',
+            { style: { padding: '8px 10px', background: 'rgba(59, 130, 246, 0.08)' } },
+            createElement('div', { style: { fontSize: 10.5, color: 'var(--accent, #3b82f6)', marginBottom: 4, fontWeight: 600 } }, 'HEAD / 当前分支:'),
+            createElement('pre', { style: { margin: 0, fontSize: 12, fontFamily: 'ui-monospace, monospace', whiteSpace: 'pre-wrap' } }, block.ours || '（空）'),
+          ),
+          createElement(
+            'div',
+            { style: { padding: '8px 10px', background: 'rgba(34, 197, 94, 0.08)' } },
+            createElement('div', { style: { fontSize: 10.5, color: 'var(--current, #22c55e)', marginBottom: 4, fontWeight: 600 } }, `传入 / ${block.label}:`),
+            createElement('pre', { style: { margin: 0, fontSize: 12, fontFamily: 'ui-monospace, monospace', whiteSpace: 'pre-wrap' } }, block.theirs || '（空）'),
+          ),
+        ),
+      ),
+    )
+
+    lineIdx = block.end + 1
+
+    // 4. 渲染冲突下方的 8 行紧邻上下文代码
+    const contextEnd = Math.min(lines.length, lineIdx + CONTEXT_AROUND)
+    while (lineIdx < contextEnd) {
+      const num = lineIdx + 1
+      const text = lines[lineIdx] ?? ''
+      elements.push(
+        createElement(
+          'div',
+          { className: 'dsh-gd-row normal', key: `line-${num}` },
+          createElement('span', { className: 'dsh-gd-marker' }, ' '),
+          createElement('span', { className: 'dsh-gd-num' }, String(num)),
+          createElement('span', { className: 'dsh-gd-txt', style: { whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, monospace' } }, text),
+        ),
+      )
+      lineIdx += 1
+    }
+  }
+
+  // 5. 如果下方还有大量剩余代码，折叠剩余部分
+  if (lineIdx < lines.length) {
+    const remainingCount = lines.length - lineIdx
+    const fromLine = lineIdx + 1
+    const toLine = lines.length
+    elements.push(
+      createElement(
+        'div',
+        {
+          className: 'dsh-gd-gap',
+          key: 'gap-after-last',
+          style: {
+            padding: '6px 12px',
+            margin: '4px 0',
+            background: 'rgba(128,128,128,0.08)',
+            borderRadius: 4,
+            fontSize: 11,
+            color: 'var(--muted)',
+            cursor: 'pointer',
+            textAlign: 'center',
+          },
+          title: '点击展开剩余代码',
+          onClick: () => {
+            const el = document.getElementById('gap-body-after-last')
+            if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'
+          },
+        },
+        `↕️ 已折叠下方第 ${fromLine}–${toLine} 行未冲突代码 (${remainingCount} 行)`,
+      ),
+      createElement(
+        'div',
+        {
+          id: 'gap-body-after-last',
+          key: 'gap-body-content-after-last',
+          style: { display: 'none' },
+        },
+        lines.slice(lineIdx).map((lText, i) => {
+          const num = lineIdx + i + 1
+          return createElement(
+            'div',
+            { className: 'dsh-gd-row normal', key: `line-${num}` },
+            createElement('span', { className: 'dsh-gd-marker' }, ' '),
+            createElement('span', { className: 'dsh-gd-num' }, String(num)),
+            createElement('span', { className: 'dsh-gd-txt', style: { whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, monospace' } }, lText),
+          )
+        }),
+      ),
+    )
+  }
+
+  return createElement('div', { className: 'dsh-gd-conflicts-flow', style: { padding: '8px 12px', overflowY: 'auto' } }, elements)
 }
 
 /** 视图样式（跟随 DSH 的深浅色变量）。 */
