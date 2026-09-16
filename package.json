@@ -1,6 +1,6 @@
 {
   "name": "dsh-git-panel",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "DSH web GUI git panel: branch management, commit graph, VS Code-style side-by-side diff with merge-conflict resolution, and workspace file-tree change badges.",
   "license": "MIT",
   "author": "Jaden Tang <jaden.tang@sjfood.com>",

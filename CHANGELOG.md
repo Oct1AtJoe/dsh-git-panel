@@ -2,6 +2,24 @@
 
 `dsh-git-panel` 的版本变更记录。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.19] - 2026-09-16
+
+### Fixed
+- **工作区启动卡与官方卡片样式不一致**：
+  - 根因：`sidebarRightTabs.register` 的 `guide` 只提供了 `title`（3 个字段），
+    而官方 provider（`sidebar-files` / `sidebar-terminal`）使用的是
+    `id` + `order` + `title` + `description` + `icon` 五件套；
+  - 缺少 `description` 导致卡片只剩一行标题、主副行距与整体留白都与官方卡片对不齐；
+  - 缺少 `icon` 导致左侧图标位空缺，卡片视觉重心偏移；
+  - 现按官方契约补齐五件套，并新增 26px 的 `GitGuideIcon`（`{ size, className }` 契约，
+    尺寸由官方卡片注入、颜色继承 `currentColor` 以跟随主题与悬停态）；
+  - 新增三语副标题文案 `guide.gitDescription`（中/英/西）。
+- 修复后「Git 版本控制与提交图谱」卡片与「工作区文件」「新建终端」在宽度、高度、
+  圆角、边框、内间距、图标尺寸、主副标题字号与行高上完全一致。
+
+> 说明：终端卡右侧的 `▾` 展开箭头是该 provider 独有的 shell 选择功能（可选 bash/zsh/fish），
+> 本插件没有对应能力，因此不提供该箭头——这是功能差异，非样式差异。
+
 ## [0.1.18] - 2026-09-16
 
 ### Security

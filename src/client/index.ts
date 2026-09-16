@@ -54,7 +54,34 @@ interface PanelClientContext {
 export const inject = ['sessions', 'locale']
 
 const TAB_ID = '@deepseek-ai/dsh-git-panel'
-const DIFF_TAB_ID = '@deepseek-ai/dsh-git-panel/diff'
+
+
+/**
+ * 工作区启动卡上的 Git 图标。
+ *
+ * 契约与官方 provider 的 guide icon 一致：接收 `{ size, className }`，
+ * 尺寸由官方卡片（26px）注入，颜色继承 `currentColor` 以便跟随主题与悬停态。
+ */
+function GitGuideIcon(props: { size?: number; className?: string }): React.ReactElement {
+  const size = props.size ?? 26
+  return createElement('svg', {
+    width: size,
+    height: size,
+    className: props.className,
+    viewBox: '0 0 28 28',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.6,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    'aria-hidden': 'true',
+  },
+    createElement('circle', { key: 'a', cx: 9, cy: 7, r: 2.6 }),
+    createElement('circle', { key: 'b', cx: 9, cy: 21, r: 2.6 }),
+    createElement('circle', { key: 'c', cx: 19, cy: 14, r: 2.6 }),
+    createElement('path', { key: 'd', d: 'M9 9.6v8.8M9 14h7.4' }),
+  )
+}const DIFF_TAB_ID = '@deepseek-ai/dsh-git-panel/diff'
 /** 官方文档插槽里的渲染器 id（与标签类型 id 不同名，避免与官方注册表冲突）。 */
 const DIFF_VIEWER_ID = 'dsh-git-panel/diff'
 const DIFF_KIND = 'git-diff'
@@ -164,9 +191,16 @@ export function apply(ctx: PanelClientContext): void {
           kind: 'git',
           priority: 'extension',
           title: () => 'Git',
+          // 与官方 provider（sidebar-files / sidebar-terminal）保持完全一致的
+          // guide 契约：id + order + title + description + icon 五件套。
+          // 缺 description/icon 会让工作区启动卡只剩一行标题，行距与留白都和
+          // 官方卡片对不齐——补全后才与「工作区文件」「新建终端」长得一样。
           guide: [{
+            id: 'git',
             order: 12,
             title: () => t('tab.gitTitle'),
+            description: () => t('guide.gitDescription'),
+            icon: GitGuideIcon,
           }],
         })
 

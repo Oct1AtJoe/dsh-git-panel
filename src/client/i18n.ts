@@ -13,6 +13,7 @@ type Dict = Record<string, string>
 
 const DICTS: Record<Lang, Dict> = {
   zh: {
+    'guide.gitDescription': '管理分支与提交，处理代码冲突',
     'panel.cancelOp': '取消当前操作',
     'diff.tagNew': '新增',
     'diff.fontSizeGroup': '字号',
@@ -175,6 +176,7 @@ const DICTS: Record<Lang, Dict> = {
     'aria.loading': '加载中',
   },
   en: {
+    'guide.gitDescription': 'Manage branches, commits and conflicts',
     'panel.cancelOp': 'Cancel the current operation',
     'diff.tagNew': 'New',
     'diff.fontSizeGroup': 'Font size',
@@ -337,6 +339,7 @@ const DICTS: Record<Lang, Dict> = {
     'aria.loading': 'Loading',
   },
   es: {
+    'guide.gitDescription': 'Gestiona ramas, commits y conflictos',
     'panel.cancelOp': 'Cancelar la operación actual',
     'diff.tagNew': 'Nuevo',
     'diff.fontSizeGroup': 'Tamaño de fuente',
