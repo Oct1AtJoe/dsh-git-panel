@@ -51,31 +51,31 @@ Un plugin de panel de Git para la GUI web de DSH: gestión de ramas (cambiar / t
 
 **Pestaña nativa en la barra lateral derecha** — Git aparece junto a la pestaña integrada «Archivos»; la barra lateral gestiona expandir/contraer, el ancho y el cambio de pestañas:
 
-![Pestaña Git en la barra lateral derecha](docs/sidebar-tab.png?v=0.1.17)
+![Pestaña Git en la barra lateral derecha](docs/sidebar-tab.png?v=0.1.18)
 
 **Marcas de cambios en el árbol de archivos** (añadido / modificado / eliminado, con insignias de conflicto):
 
-![Marcas de cambios en el árbol de archivos](docs/git-filetree-status.png?v=0.1.17)
+![Marcas de cambios en el árbol de archivos](docs/git-filetree-status.png?v=0.1.18)
 
 **Vista de diferencias estilo VS Code** (lado a lado, desplazamiento sincronizado):
 
-![Vista de diferencias](docs/git-diff-split.png?v=0.1.17)
+![Vista de diferencias](docs/git-diff-split.png?v=0.1.18)
 
 **Resolución de conflictos con contexto completo** — el conflicto y su código circundante aparecen directamente en la primera pantalla, con números de línea; las regiones lejanas quedan plegadas:
 
-![Resolución de conflictos de fusión](docs/git-conflict-resolve.png?v=0.1.17)
+![Resolución de conflictos de fusión](docs/git-conflict-resolve.png?v=0.1.18)
 
 **Panel de ramas** (ramas locales/remotas, adelante/detrás, doble clic para cambiar, menú contextual):
 
-![Panel de ramas](docs/branches.png?v=0.1.17)
+![Panel de ramas](docs/branches.png?v=0.1.18)
 
 **Chip de rama** (cambio rápido de rama encima del cuadro de entrada):
 
-![Chip de rama](docs/chip.png?v=0.1.17)
+![Chip de rama](docs/chip.png?v=0.1.18)
 
 **Gráfico de commits** (columnas redimensionables, scroll virtualizado):
 
-![Gráfico de commits](docs/graph.png?v=0.1.17)
+![Gráfico de commits](docs/graph.png?v=0.1.18)
 
 ## Instalación
 

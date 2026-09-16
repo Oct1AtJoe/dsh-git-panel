@@ -56,31 +56,31 @@ DSH Web GUI 的 Git 面板插件：分支管理（切换 / 拉取 / 抓取 / 重
 
 **文件树改动标记**（有改动的文件名后跟状态字母并着色，含改动的目录带圆点，与 VS Code 资源管理器一致）：
 
-![文件树改动标记](docs/git-filetree-status.png?v=0.1.17)
+![文件树改动标记](docs/git-filetree-status.png?v=0.1.18)
 
 **Git 对比视图**（全屏双栏 Diff，行号对齐，未改动区域可折叠，头部含增删统计与操作按钮）：
 
-![Git 对比视图](docs/git-diff-split.png?v=0.1.17)
+![Git 对比视图](docs/git-diff-split.png?v=0.1.18)
 
 **合并冲突一键解决（全景行号上下文）**（冲突核心与上下各 8 行代码直接置于首屏并带行号，远处未冲突区自动折叠；三动作直接落笔，保存即写回）：
 
-![合并冲突解决](docs/git-conflict-resolve.png?v=0.1.17)
+![合并冲突解决](docs/git-conflict-resolve.png?v=0.1.18)
 
 **官方右侧栏原生标签页**（与内置「文件」并列，展开/收起、宽度拖拽、标签切换全部由官方侧边栏接管）：
 
-![右侧栏中的 Git 标签页](docs/sidebar-tab.png?v=0.1.17)
+![右侧栏中的 Git 标签页](docs/sidebar-tab.png?v=0.1.18)
 
 **分支面板**（本地/远程分支、ahead/behind、双击切换、右键菜单）：
 
-![分支面板](docs/branches.png?v=0.1.17)
+![分支面板](docs/branches.png?v=0.1.18)
 
 **分支胶囊**（输入框上方快速切换分支）：
 
-![分支胶囊](docs/chip.png?v=0.1.17)
+![分支胶囊](docs/chip.png?v=0.1.18)
 
 **提交图谱**（三栏可拖拽列宽、虚拟化滚动）：
 
-![提交图谱](docs/graph.png?v=0.1.17)
+![提交图谱](docs/graph.png?v=0.1.18)
 
 ## 安装
 

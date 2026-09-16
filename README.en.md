@@ -53,31 +53,31 @@ A Git panel plugin for the DSH Web GUI: branch management (switch / pull / fetch
 
 **File-tree change badges** — changed files carry a status letter after the name and a tinted filename, and directories with changes get a dot, just like VS Code's Explorer:
 
-![File tree change badges](docs/git-filetree-status.png?v=0.1.17)
+![File tree change badges](docs/git-filetree-status.png?v=0.1.18)
 
 **Git diff view** — full-width side-by-side diff with aligned line numbers, collapsible unchanged regions, and change statistics plus actions in the header:
 
-![Git diff view](docs/git-diff-split.png?v=0.1.17)
+![Git diff view](docs/git-diff-split.png?v=0.1.18)
 
 **Merge-conflict resolution with full context** — the conflict and its surrounding code (8 lines either side, with line numbers) land on the first screen, while distant conflict-free regions stay folded; three one-click actions, and saving writes the result back:
 
-![Merge conflict resolution](docs/git-conflict-resolve.png?v=0.1.17)
+![Merge conflict resolution](docs/git-conflict-resolve.png?v=0.1.18)
 
 **Native tab in the right sidebar** — Git sits beside the built-in "Files" tab, and the sidebar owns expand/collapse, width drag, and tab switching:
 
-![Git tab in the right sidebar](docs/sidebar-tab.png?v=0.1.17)
+![Git tab in the right sidebar](docs/sidebar-tab.png?v=0.1.18)
 
 **Branch panel** (local/remote branches, ahead/behind, double-click to switch, right-click menu):
 
-![Branch panel](docs/branches.png?v=0.1.17)
+![Branch panel](docs/branches.png?v=0.1.18)
 
 **Branch chip** (quick branch switching above the input box):
 
-![Branch chip](docs/chip.png?v=0.1.17)
+![Branch chip](docs/chip.png?v=0.1.18)
 
 **Commit graph** (resizable three-column layout, virtualized scrolling):
 
-![Commit graph](docs/graph.png?v=0.1.17)
+![Commit graph](docs/graph.png?v=0.1.18)
 
 ## Installation
 

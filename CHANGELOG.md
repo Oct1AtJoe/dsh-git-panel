@@ -2,6 +2,16 @@
 
 `dsh-git-panel` 的版本变更记录。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.18] - 2026-09-16
+
+### Security
+- **移除文档截图中的真实仓库信息**（0.1.17 的截图直接取自真实项目，泄露了内部项目名、分支名与提交信息）：
+  - 重写 `docs/preview.html` 为全虚构示例（示例仓库 `example-shop`、虚构分支与提交、虚构代码文件）；
+  - 新增 conflict / diff / tree 三个渲染场景，用 Chrome headless 渲染该页面重截全部 7 张功能图；
+  - 三语 README 截图引用统一追加 `?v=0.1.18`；
+  - 已验证 docs 与 README 中不含任何真实仓库/分支/账号信息。
+- 建议安装 `>=0.1.18`；`0.1.17` 已在 npm 标记为 deprecated。
+
 ## [0.1.17] - 2026-09-16
 
 ### Added
