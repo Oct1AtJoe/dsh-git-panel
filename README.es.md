@@ -11,8 +11,8 @@ Un plugin de panel de Git para la GUI web de DSH: gestión de ramas (cambiar / t
   - **Búsqueda y filtrado rápido**: cuadro de búsqueda en la parte superior para filtrar ramas y mensajes de commit en tiempo real
   - Ramas locales: rama actual resaltada, `↑adelante / ↓detrás` respecto a la rama remota, **doble clic para cambiar** (doble clic en la rama actual para traer cambios)
   - Ramas remotas: **doble clic para cambiar a** (crea automáticamente una rama de seguimiento local)
-  - Menú contextual: **copiar nombre de rama / renombrar / eliminar / fusionar en la rama actual** (las ramas remotas ofrecen eliminar rama remota)
-  - **Traer cambios** de la rama actual con un clic, **obtener todo** (`git fetch --all --prune`)
+  - Menú contextual: **traer cambios / obtener todo / copiar nombre de rama / renombrar / eliminar / fusionar en la rama actual** (las ramas remotas ofrecen eliminar rama remota)
+  - **Traer cambios** de la rama actual con un clic, **obtener todo** (`git fetch --all --prune`); mientras se ejecuta pull/push/sync se muestra una barra de progreso y un icono giratorio, y se puede **cancelar** (detiene realmente el proceso git en segundo plano)
 - **Chip de rama** (encima del cuadro de entrada): muestra la rama actual; haz clic para abrir la lista de ramas locales y cambiar rápidamente
 - **Gráfico de Git**: carriles del DAG de commits, encabezado de tres columnas (Carriles / Commit / Rama); la columna de commits se puede redimensionar desde ambos lados (ancho persistente); haz clic en un nodo para ver los detalles del commit; renderizado virtualizado — solo se dibuja el área visible, por lo que los repositorios grandes se desplazan con fluidez
 - **Barra de escritura** (parte superior del panel, bajo las pestañas):
@@ -39,9 +39,10 @@ Un plugin de panel de Git para la GUI web de DSH: gestión de ramas (cambiar / t
   - Compatibilidad total con el nuevo editor enriquecido Lexical de DSH Web.
 - **Acciones rápidas y protección contra reentrancia**:
   - La insignia de atraso (`↓101`) permite hacer pull con un solo clic.
-  - Menú contextual con opciones de Pull y Fetch total, con bloqueo de concurrencia y botón de cancelación.
+  - Menú contextual con opciones de Pull y Fetch total, con bloqueo de concurrencia y botón de cancelación que detiene realmente el proceso git.
+- **Iconos unificados + Tooltips instantáneos**: todos los iconos provienen de una única biblioteca interna (misma cuadrícula 16x16, mismo grosor de trazo, mismos extremos redondeados); al pasar el ratón por cualquier botón se muestra su descripción **al instante** (sin el retardo de ~1s del `title` nativo).
 - **Acciones sobre commits del gráfico**: haga clic en un nodo de commit del gráfico para **cherry-pick a la rama actual** o **revertirlo** (`git revert --no-edit`)
-- **Multilingüe**: sigue el idioma de la interfaz web de DSH (chino / inglés); los navegadores en español reciben automáticamente el texto en español; por defecto chino simplificado
+- **Multilingüe**: sigue el idioma de la interfaz web de DSH (chino / inglés); los navegadores en español reciben automáticamente el texto en español; por defecto chino simplificado; la interfaz y los mensajes de error están completos en los tres idiomas
 - **Pestaña nativa en la barra lateral derecha**: el panel Git es una pestaña de primera clase junto a «Archivos»; expandir, contraer, arrastrar el ancho y cambiar de pestaña los gestiona la barra lateral oficial, sin reescribir el diseño de la página
 - Sigue el directorio de trabajo de la sesión actual: se reenlaza automáticamente al cambiar de sesión de proyecto
 - Tema claro / oscuro siguiendo la GUI web de DSH
@@ -58,15 +59,15 @@ Un plugin de panel de Git para la GUI web de DSH: gestión de ramas (cambiar / t
 
 **Vista de diferencias estilo VS Code** (lado a lado, desplazamiento sincronizado):
 
-![Vista de diferencias](docs/git-diff-split.png)
+![Vista de diferencias](docs/git-diff-split.png?v=0.1.17)
 
 **Resolución de conflictos con contexto completo** — el conflicto y su código circundante aparecen directamente en la primera pantalla, con números de línea; las regiones lejanas quedan plegadas:
 
-![Resolución de conflictos de fusión](docs/git-conflict-resolve.png?v=0.1.15)
+![Resolución de conflictos de fusión](docs/git-conflict-resolve.png?v=0.1.17)
 
 **Panel de ramas** (ramas locales/remotas, adelante/detrás, doble clic para cambiar, menú contextual):
 
-![Panel de ramas](docs/branches.png)
+![Panel de ramas](docs/branches.png?v=0.1.17)
 
 **Chip de rama** (cambio rápido de rama encima del cuadro de entrada):
 
@@ -84,7 +85,7 @@ dsh plugin --profile web add dsh-git-panel
 
 Reinicia `dsh web`, abre una sesión de proyecto vinculada a un repositorio git, abre la barra lateral derecha (arriba a la derecha) y elige la pestaña **Git**.
 
-> **Requisitos de entorno**: necesita el **DSH Web actual** (`>=0.1.5-alpha.1`, la versión que introdujo el marco de pestañas laterales derechas `@deepseek-ai/dsh-client-ui-sidebar-right`).
+> **Requisitos de entorno**: necesita el **DSH Web actual** (`>=0.1.5-alpha.1`, se recomienda `0.1.6-alpha.1` o superior, la versión que introdujo el marco de pestañas laterales derechas `@deepseek-ai/dsh-client-ui-sidebar-right`).
 > Las marcas de cambios en el árbol de archivos y la pestaña de diff de Git dependen del registro de tipos de pestaña de la barra lateral derecha y del modelo de direcciones `dsh-resource://file`; la entrada «cambiar a diff de Git dentro de la vista previa oficial» depende además de `@deepseek-ai/dsh-client-ui-sidebar-documentpreview`, incluido por defecto desde 0.1.5.
 > En versiones antiguas de DSH (por ejemplo `0.1.2-rc.1`) estas funciones no hacen nada: no existe el registro de pestañas ni el modelo unificado de direcciones de archivo.
 

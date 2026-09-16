@@ -2,6 +2,48 @@
 
 `dsh-git-panel` 的版本变更记录。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.17] - 2026-09-16
+
+### Added
+- **统一图标系统 `src/client/icons.tsx`**：
+  - 新增全插件唯一的图标库，统一 16×16 网格、线宽 1.5、圆角端点/连接、`currentColor` 着色；
+  - 覆盖刷新、文件、双栏/单栏、编辑、冲突、换行、折叠、代码、加减、保存、勾选、关闭、复制、对话、撤销、上下箭头、同步、抓取、删除、钥匙、灯泡、分支、双保留、信息、列表、外链等 29 个图标；
+  - 根除此前 **emoji（📋💬↩）／字符字形（≡ + − ✓ ↑↓）／手写 SVG 三种风格混用** 导致的视觉割裂与跨平台字宽错位。
+- **即时 tooltip `src/client/tooltip.ts`**：
+  - 自绘浮层替代原生 `title`（原生有约 1 秒延迟且样式不可控，在窄侧栏里用户根本来不及看到）；
+  - 挂到 `document.body` 固定定位，永不被列表 `overflow:auto` 裁切，自动避让视口边缘；
+  - 变更行操作按钮改为统一图标按钮 + 悬停即时提示。
+- **操作进行中的 loading 反馈**：
+  - 顶部不确定进度条（`dsh-gp-progress`）+ 转圈图标（`dsh-gp-spinner`）；
+  - 新增 `pendingOp` 状态，精确只在被触发的入口上转圈（拉取/推送/同步/抓取/提交互不干扰）；
+  - 状态跨面板实例保持在 `GLOBAL_GIT_BUSY_MAP`，切换会话再回来仍显示进行中。
+- **「取消」按钮真正中止后台 git 进程**：
+  - 新增宿主 `/git-panel/cancel` 路由与 `GitRunner.cancel()`，以及客户端 `api.cancel()`；
+  - 此前点击「取消」只清界面状态，git 进程仍在后台跑到超时，表现为「一直卡住」。
+- **宿主错误码翻译层 `tError()`**：
+  - 宿主返回的 `error.code` 映射为本地化文案（中/英/西），未收录的 code 与 git 自身 stderr 原文保留；
+  - 超时改用稳定机器可读标记 `E_TIMEOUT`，不再依赖中/英文案匹配。
+
+### Changed
+- **全插件文案多语言化**：移除所有硬编码中文与文案内装饰性 emoji，新增/迁移约 100 条 i18n 键（中 / 英 / 西三语齐全），
+  涉及 `Panel.tsx`、`GitDiffView.tsx`、`index.ts`、`BranchChip.tsx`，以及宿主错误的界面呈现。
+- **git 执行方式对齐 VS Code**（`extensions/git/src/git.ts`）：
+  - 改用 `spawn` 且 `stdio[0]='ignore'`——git 拿不到 stdin，**永远无法交互式提问**，不会再卡在凭据提示；
+  - 环境变量强制 `LANGUAGE/LC_ALL/LANG=en_US.UTF-8` 与 `GIT_PAGER=cat`，输出稳定可被程序解析；
+  - 凭据**不再由插件接管**：默认完全交给系统凭据助手（macOS 上的 GCM），仅在用户主动保存过 `~/.git-credentials` 时才额外挂 git 原生 `store` 助手；
+  - `HOME` 不再被硬编码为 Windows 路径（此前导致 macOS 上读不到 `~/.gitconfig`、`~/.ssh` 与凭据文件）。
+
+### Fixed
+- **macOS 上每次拉取都弹出钥匙串对话框并卡死**：根因是插件调用 git 时继承了全局 Git Credential Manager，
+  且 `HOME` 被写成 Windows 路径使 git 读不到真实配置。现已彻底修掉（详见 Changed 中的执行方式对齐）。
+- **凭据以明文写入仓库配置**：`set-credential` 曾把带密码的 URL 写进 `.git/config` 的 `remote.origin.url`
+  与分支 `remote` 字段，`git remote -v` 即可看到明文。现已删除该行为，并收紧 `~/.git-credentials` 为 `0600`。
+- **变更列表丢失「仅工作区修改」的文件**：客户端用 `/^(\S+)\s+/` 解析 porcelain，
+  未暂存行的 X 位本身是空格（`" M path"`）导致整行被丢弃。现按 porcelain 固定宽度（XY + 空格 + 路径）解析。
+- **「同步」按钮误触发放弃更改**：`runWrite('sync')` 缺少 sync 分支，会掉进最后的 `discardFile` 兜底（等同误删改动），已补上并移除 `as any`。
+- **忙碌提示条内取消按钮样式错乱**：图标被强制 `display:block` 把文字挤到下一行，已改为行内并重构为紧凑按钮。
+- **非交互凭据匹配失败**：显式关闭 `credential.useHttpPath`，避免按仓库路径精确匹配导致永远取不到凭据。
+
 ## [0.1.16] - 2026-09-12
 
 ### Fixed

@@ -11,7 +11,7 @@ A Git panel plugin for the DSH Web GUI: branch management (switch / pull / fetch
   - **Instant search & filter**: quick search box at the top of the branch list to filter branches and commit messages in real time
   - Local branches: current branch highlighted, `↑ahead / ↓behind` against upstream, **double-click to switch** (double-click the current branch to pull)
   - Remote branches: **double-click to check out** (creates a local tracking branch automatically)
-  - Right-click menu: **copy branch name / rename / delete / merge into current branch** (remote branches get delete-remote instead)
+  - Right-click menu: **pull updates / fetch all / copy branch name / rename / delete / merge into current branch** (remote branches get delete-remote instead)
   - One-click **pull** of the current branch, **fetch all** (`git fetch --all --prune`)
 - **Branch chip** (above the input box): shows the current branch; click to open a local-branch list for quick switching
 - **Git graph**: commit DAG lanes, three-column header (Lanes / Commit / Branch), the commit column is resizable from both sides (width persisted), click a node for commit details; virtualized rendering — only the visible viewport is drawn, so large repositories scroll smoothly
@@ -41,7 +41,8 @@ A Git panel plugin for the DSH Web GUI: branch management (switch / pull / fetch
   - Full compatibility with the latest DSH Lexical rich text composer.
 - **Fast Actions & Reentrancy Guards**:
   - Clickable behind (`↓101`) badge for instant pulling.
-  - Right-click menu with Pull & Fetch-all options, busy locks, and cancellation buttons.
+  - Right-click menu with Pull & Fetch-all options, busy locks, and a **cancel** button that really kills the background git process.
+- **Unified icon set + instant tooltips**: every icon comes from one in-plugin library (same 16x16 grid, same stroke width, same rounded caps), so nothing looks out of place; hovering any icon button shows its description **immediately** (not the browser's ~1s native `title` delay).
 - **Graph commit actions**: click a commit node in the graph to **cherry-pick it onto the current branch** or **revert it** (`git revert --no-edit`)
 - **Multilingual**: follows the DSH Web UI language (Chinese / English); Spanish browsers automatically get Spanish copy; defaults to Simplified Chinese
 - **Native right-sidebar tab**: the Git panel is a first-class tab beside the built-in "Files" tab — expand, collapse, width dragging, and tab switching are all owned by the official sidebar, with no page-layout rewriting
@@ -56,11 +57,11 @@ A Git panel plugin for the DSH Web GUI: branch management (switch / pull / fetch
 
 **Git diff view** — full-width side-by-side diff with aligned line numbers, collapsible unchanged regions, and change statistics plus actions in the header:
 
-![Git diff view](docs/git-diff-split.png)
+![Git diff view](docs/git-diff-split.png?v=0.1.17)
 
 **Merge-conflict resolution with full context** — the conflict and its surrounding code (8 lines either side, with line numbers) land on the first screen, while distant conflict-free regions stay folded; three one-click actions, and saving writes the result back:
 
-![Merge conflict resolution](docs/git-conflict-resolve.png?v=0.1.15)
+![Merge conflict resolution](docs/git-conflict-resolve.png?v=0.1.17)
 
 **Native tab in the right sidebar** — Git sits beside the built-in "Files" tab, and the sidebar owns expand/collapse, width drag, and tab switching:
 
@@ -68,7 +69,7 @@ A Git panel plugin for the DSH Web GUI: branch management (switch / pull / fetch
 
 **Branch panel** (local/remote branches, ahead/behind, double-click to switch, right-click menu):
 
-![Branch panel](docs/branches.png)
+![Branch panel](docs/branches.png?v=0.1.17)
 
 **Branch chip** (quick branch switching above the input box):
 
@@ -86,7 +87,7 @@ dsh plugin --profile web add dsh-git-panel
 
 Restart `dsh web`, open a project session bound to a git repository, then open the right sidebar (top-right) and pick the **Git** tab.
 
-> **Runtime requirements**: this needs the **current DSH Web** (`>=0.1.5-alpha.1`, i.e. the release that introduced the right-sidebar multi-tab framework `@deepseek-ai/dsh-client-ui-sidebar-right`).
+> **Runtime requirements**: this needs the **current DSH Web** (`>=0.1.5-alpha.1`, `0.1.6-alpha.1` or newer recommended, i.e. the release that introduced the right-sidebar multi-tab framework `@deepseek-ai/dsh-client-ui-sidebar-right`).
 > The file-tree change badges and the Git diff tab rely on the right sidebar's tab-type registry and the `dsh-resource://file` address model; the "switch to Git diff inside the official file preview" entry additionally relies on DSH's own `@deepseek-ai/dsh-client-ui-sidebar-documentpreview` (bundled by default since 0.1.5).
 > On older DSH builds (for example `0.1.2-rc.1`) these features do nothing — those versions have no right-sidebar tab registry and no unified file-address model.
 
