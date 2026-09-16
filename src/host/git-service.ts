@@ -5,8 +5,9 @@
  * @module dsh-git-panel/host/git-service
  */
 
-import { execFile as execFileNative } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { readFile as readBytes, realpath, stat } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join, relative as relativePath, resolve as resolvePath, sep } from 'node:path'
 import { existsSync, readFileSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
@@ -24,6 +25,8 @@ export interface GitRunResult {
 /** git 经过的 spawn 接缝（生产环境中即子进程服务）。 */
 export interface GitRunner {
   run(argv: readonly string[], cwd: string): Promise<GitRunResult>
+  /** 中止当前在飞的 git 进程（用于面板上的「取消」按钮，避免只能干等超时）。 */
+  cancel?(): void
 }
 
 /** 单条 git 命令的收集输出上限。 */
@@ -63,22 +66,49 @@ export type WorkspaceGate = (path: string) => Promise<WorkspaceVerdict>
 
 /** 基于原生 child_process 的生产运行器，支持环境变量完整透传与网络超时。 */
 export function subprocessRunner(_ctx: Context): GitRunner {
+  let current: ReturnType<typeof spawn> | null = null
   return {
+    cancel() {
+      if (current !== null) {
+        current.kill('SIGTERM')
+        current = null
+      }
+    },
     async run(argv, cwd) {
       return new Promise((resolve) => {
-        // 核心透传：强制将当前真实用户 Administrator 的凭据目录与配置注入环境，
-        // 确保后台读取到本地已有的 git 认证与 SSH keys，与外部终端 100% 表现一致！
-        const userProfile = process.env.USERPROFILE || 'C:\\Users\\Administrator'
+        // 对齐 VS Code git 扩展的执行约定（extensions/git/src/git.ts）：
+        //   options.stdio = ['ignore', null, null]   → stdin 丢弃，git 永远无法交互式提问
+        //   LANGUAGE/LC_ALL/LANG = en_US.UTF-8       → 输出语言稳定（错误信息可被可靠解析）
+        //   GIT_PAGER = 'cat'                        → 后台不启用分页器
+        // VS Code 自己**完全不管凭据**：不写凭据文件、不改 remote URL、不清空 helper 链，
+        // 认证交给系统已配置的凭据助手（macOS 上通常是 GCM / osxkeychain）。这里同样如此，
+        // 仅在用户主动通过面板保存过凭据时，额外挂一个 git 原生 `store` 助手。
+        const isWindows = process.platform === 'win32'
+        const homeDir = homedir()
+        // POSIX 下必须保留真实 HOME，否则 git 读不到 ~/.gitconfig 与 ~/.ssh，
+        // 只能回落到系统级凭据助手；Windows 上则补全这些变量。
         const env = {
           ...process.env,
-          USERPROFILE: userProfile,
-          HOME: userProfile,
-          APPDATA: process.env.APPDATA || `${userProfile}\\AppData\\Roaming`,
-          LOCALAPPDATA: process.env.LOCALAPPDATA || `${userProfile}\\AppData\\Local`,
+          ...(isWindows
+            ? {
+                USERPROFILE: process.env.USERPROFILE || homeDir,
+                HOME: process.env.HOME || process.env.USERPROFILE || homeDir,
+                APPDATA: process.env.APPDATA || `${homeDir}\\AppData\\Roaming`,
+                LOCALAPPDATA: process.env.LOCALAPPDATA || `${homeDir}\\AppData\\Local`,
+              }
+            : {}),
+          // 后台进程绝不进入交互式提示：没有 TTY，一旦发问就会挂到超时。
           GIT_TERMINAL_PROMPT: '0',
+          // GCM 的 GUI 对话框需要有桌面会话；本进程由 launchd 后台拉起，
+          // 弹窗可能无人应答而卡死，因此明确禁掉 GUI，让它直接报错。
           GCM_INTERACTIVE: 'never',
           GCM_MODAL_PROMPT: 'false',
-          // 核心修复：局域网/企业私有 GitLab 绝不走 7890 代理，内网直连秒速完成！
+          // VS Code 同款：强制英文输出 + 不分页。
+          LANGUAGE: 'en',
+          LC_ALL: 'en_US.UTF-8',
+          LANG: 'en_US.UTF-8',
+          GIT_PAGER: 'cat',
+          // 企业内网 GitLab 不走代理，直连更快。
           NO_PROXY: '*sjfood.us,localhost,127.0.0.1',
           no_proxy: '*sjfood.us,localhost,127.0.0.1',
         }
@@ -86,29 +116,74 @@ export function subprocessRunner(_ctx: Context): GitRunner {
         const isNetworkOp = argv.includes('pull') || argv.includes('fetch') || argv.includes('push') || argv.includes('clone')
         const timeout = isNetworkOp ? 90000 : 20000
 
-        execFileNative('git', argv as string[], { cwd, maxBuffer: OUTPUT_CAP_BYTES, windowsHide: true, env, timeout }, (err, stdout, stderr) => {
-          if (err) {
-            let errMsg = stderr ? stderr.toString() : (err.message || String(err))
-            if ((err as any).killed) {
-              errMsg = '⚠️ 操作超时（超过90秒）：网络连接缓慢或远程服务器无响应，请稍后重试或检查代理。'
-            }
-            resolve({
-              exitCode: typeof (err as any).code === 'number' ? (err as any).code : 1,
-              stdout: stdout ? stdout.toString() : '',
-              stderr: errMsg,
-            })
-          } else {
-            resolve({
-              exitCode: 0,
-              stdout: stdout ? stdout.toString() : '',
-              stderr: stderr ? stderr.toString() : '',
-            })
-          }
+        // 凭据：默认完全交给系统助手（VS Code 行为）。只有用户主动在面板里保存过
+        // 凭据（~/.git-credentials 存在）时，才额外挂上 git 原生的 store 助手 ——
+        // 注意此处不清空继承的 helper 链，顺序上 store 会先命中，未命中则继续交给系统助手。
+        const credPath = join(homeDir, '.git-credentials')
+        const credArgs = existsSync(credPath)
+          ? [
+              '-c', `credential.helper=store --file=${credPath}`,
+              // 我们的凭据按主机存（https://user:pass@host）；若开了 useHttpPath，
+              // git 会要求按仓库路径精确匹配从而永远取不到，这里显式关闭。
+              '-c', 'credential.useHttpPath=false',
+            ]
+          : []
+        const fullArgv = [...credArgs, ...(argv as string[])]
+        let timedOut = false
+        // VS Code 同款：stdio[0]='ignore' → git 拿不到 stdin，无法交互式提问，只会直接失败。
+        const child = spawn('git', fullArgv, {
+          cwd,
+          windowsHide: true,
+          env,
+          stdio: ['ignore', 'pipe', 'pipe'],
         })
+        current = child
+
+        const MAX = OUTPUT_CAP_BYTES
+        let stdout = ''
+        let stderr = ''
+        let settled = false
+        child.stdout?.setEncoding('utf8')
+        child.stderr?.setEncoding('utf8')
+        child.stdout?.on('data', (chunk: string) => { if (stdout.length < MAX) stdout += chunk })
+        child.stderr?.on('data', (chunk: string) => { if (stderr.length < MAX) stderr += chunk })
+
+        // 网络操作 90 秒、其余 20 秒：超时即 kill，避免后台 git 无限期挂起。
+        const timer = setTimeout(() => {
+          timedOut = true
+          try { child.kill('SIGTERM') } catch { /* noop */ }
+        }, timeout)
+
+        const finish = (exitCode: number): void => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          current = null
+          if (exitCode !== 0) {
+            let errMsg = stderr.trim() !== '' ? stderr.trim() : `git exited with code ${exitCode}`
+            if (timedOut) {
+              // 稳定的机器可读前缀：客户端据此本地化（E_TIMEOUT → 对应语言文案）。
+              errMsg = 'E_TIMEOUT: operation timed out'
+            }
+            resolve({ exitCode, stdout, stderr: errMsg })
+          } else {
+            resolve({ exitCode: 0, stdout, stderr })
+          }
+        }
+
+        child.on('error', (err: Error) => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          current = null
+          resolve({ exitCode: 1, stdout, stderr: err.message || String(err) })
+        })
+        child.on('close', (code: number | null) => finish(code ?? 1))
       })
     },
   }
 }
+
 
 /**
  * git --format 输出的记录/字段分隔符。NUL 是常规选择，但 Node 禁止在
@@ -315,8 +390,10 @@ export class GitService {
       return { ok: false, output: '', error: { code: 'status-failed', message: run.stderr.trim() || 'git status failed' } }
     }
     const lines = run.stdout.split('\n').filter((l) => l.trim() !== '')
-    // 精简：状态码 + 路径（中文路径保留）。
-    const output = lines.map((l) => l.replace(/^(\S+)\s+(.+)$/, '$1  $2')).join('\n')
+    // 原样返回 porcelain 行：每行固定「XY<空格>路径」，未暂存修改的 X 位本身就是空格
+    // （如 " M src/a.ts"）。任何 /^(\S+)\s+/ 形式的重排都会把这类行整行丢掉，
+    // 因此这里不做任何改写，解析交给客户端按固定宽度处理。
+    const output = lines.join('\n')
 
     // 像 VS Code 一样：检查是否有 .git/MERGE_MSG 并自动读取
     let mergeMsg = ''

@@ -8,7 +8,9 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import type { BranchesView, BranchRow, GraphView, OpResult } from '../core/types.ts'
 import type { Envelope, GitPanelApi } from './api.ts'
 import { layoutGraph, type LayoutCommit } from './graph.ts'
-import { useT } from './i18n.ts'
+import { tError, useT } from './i18n.ts'
+import { icon, type IconName } from './icons.tsx'
+import { hideTip, showTip } from './tooltip.ts'
 
 const STYLE = `
 .dsh-gp { --bg:#ffffff; --fg:#24292f; --muted:#6e7781; --border:rgba(128,128,128,0.25);
@@ -28,6 +30,17 @@ const STYLE = `
 .dsh-gp-head { display:flex; align-items:center; gap:6px; padding:8px 10px;
   border-bottom:1px solid var(--border); font-weight:600; }
 .dsh-gp-head .spacer { flex:1; }
+/* 操作进行中的 loading：转圈 spinner + 顶部不确定进度条 */
+@keyframes dsh-gp-spin { to { transform: rotate(360deg); } }
+@keyframes dsh-gp-slide { 0% { left:-40%; width:40%; } 50% { width:60%; } 100% { left:100%; width:40%; } }
+.dsh-gp-spinner { display:inline-block; width:11px; height:11px; flex:none; border-radius:50%;
+  border:1.5px solid currentColor; border-top-color:transparent; animation:dsh-gp-spin .7s linear infinite;
+  vertical-align:-1px; }
+.dsh-gp-spinner.lg { width:13px; height:13px; border-width:2px; }
+.dsh-gp-progress { position:relative; height:2px; overflow:hidden; flex:none;
+  background:color-mix(in srgb, var(--accent) 18%, transparent); }
+.dsh-gp-progress::before { content:''; position:absolute; top:0; bottom:0; background:var(--accent);
+  border-radius:0 2px 2px 0; animation:dsh-gp-slide 1.15s ease-in-out infinite; }
 .dsh-gp-btn { border:1px solid var(--border); background:transparent; color:var(--fg);
   border-radius:4px; padding:2px 8px; font-size:11px; cursor:pointer; }
 .dsh-gp-btn:hover { background:var(--hover); }
@@ -63,7 +76,8 @@ const STYLE = `
 .dsh-gp-menu { position:fixed; z-index:951; min-width:170px; padding:4px;
   background:var(--panel-bg); border:1px solid var(--border); border-radius:8px;
   box-shadow:0 8px 24px rgba(0,0,0,0.18); font-size:12px; }
-.dsh-gp-menu-item { padding:6px 10px; border-radius:6px; cursor:pointer; color:var(--fg); white-space:nowrap; }
+.dsh-gp-menu-ico { display:inline-flex; align-items:center; margin-right:6px; vertical-align:-2px; }
+.dsh-gp-menu-item { display:flex; align-items:center; padding:6px 10px; border-radius:6px; cursor:pointer; color:var(--fg); white-space:nowrap; }
 .dsh-gp-menu-item:hover { background:var(--hover); }
 .dsh-gp-menu-item.danger { color:var(--danger); }
 .dsh-gp-menu-title { padding:4px 10px 8px; color:var(--muted); font-size:11px; }
@@ -98,9 +112,31 @@ const STYLE = `
   color:var(--current); width:20px; font-weight:600; }
 .dsh-gp-changes-code.conflict { color:var(--danger); }
 .dsh-gp-changes-file { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.dsh-gp-file-act { opacity:0; padding:0 3px; font-size:11px; border:none; background:transparent; color:var(--muted); cursor:pointer; border-radius:3px; }
-.dsh-gp-changes-item:hover .dsh-gp-file-act { opacity:1; }
-.dsh-gp-file-act:hover { background:var(--border); color:var(--fg); }
+/* 变更行尾操作按钮：统一图标按钮，悬停出现 + 即时 tooltip */
+.dsh-gp-act { opacity:0; width:22px; height:20px; padding:0; display:inline-flex; align-items:center;
+  justify-content:center; border:1px solid transparent; background:transparent; color:var(--muted);
+  cursor:pointer; border-radius:5px; flex:none;
+  transition:background .12s ease, color .12s ease, border-color .12s ease, opacity .12s ease; }
+.dsh-gp-changes-item:hover .dsh-gp-act, .dsh-gp-act:focus-visible { opacity:1; }
+.dsh-gp-act:hover { background:var(--panel-bg); border-color:var(--border); color:var(--fg); }
+.dsh-gp-act.danger:hover { color:var(--danger); border-color:color-mix(in srgb, var(--danger) 45%, transparent); }
+.dsh-gp-msg-row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.dsh-gp-msg-text { display:inline-flex; align-items:center; gap:6px; min-width:0; }
+.dsh-gp-msg-text .dsh-gp-spinner { color:var(--accent); }
+/* 取消按钮：图标 + 文字同一行，紧凑且与面板风格一致 */
+.dsh-gp-cancel { display:inline-flex; align-items:center; gap:4px; flex:none; cursor:pointer;
+  font-size:10.5px; line-height:1; padding:3px 7px; border-radius:5px;
+  color:var(--danger); background:transparent; border:1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  transition:background .12s ease, color .12s ease; }
+.dsh-gp-cancel:hover { background:color-mix(in srgb, var(--danger) 12%, transparent); }
+.dsh-gp-cancel .dsh-icon { vertical-align:0; }
+/* 即时 tooltip：固定定位挂在 body 下，不会被列表的 overflow 裁掉 */
+.dsh-gp-tip { position:fixed; z-index:9999; pointer-events:none; padding:3px 8px; border-radius:6px;
+  font-size:11px; line-height:16px; white-space:nowrap; color:#fff; background:rgba(28,32,38,.96);
+  box-shadow:0 4px 14px rgba(0,0,0,.28); }
+.dsh-gp-btn-ico { display:inline-flex; align-items:center; margin-right:4px; vertical-align:-2px; }
+/* 统一图标基线：默认行内，避免在按钮里把文字挤到下一行；flex 容器内仍是 flex:none */
+.dsh-icon { display:inline-block; vertical-align:-2px; flex:none; }
 .dsh-gp-changes-diff { border:1px solid var(--border); border-radius:6px; margin-top:4px; overflow:hidden; }
 .dsh-gp-changes-diff .dsh-gp-changes-head { padding:4px 6px; background:var(--panel-bg); }
 .dsh-gp-changes-pre { max-height:240px; overflow:auto; font-size:11px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -181,7 +217,41 @@ function injectTextToChatInput(text: string): boolean {
 }
 
 /** 全局常驻操作状态字典：按工作区路径 path 保持 busy 和 message 状态 */
-export const GLOBAL_GIT_BUSY_MAP = new Map<string, { busy?: boolean; message?: { text: string; kind: 'ok' | 'err'; showAuthForm?: boolean } | null }>()
+export const GLOBAL_GIT_BUSY_MAP = new Map<string, { busy?: boolean; pendingOp?: string | null; message?: { text: string; kind: 'ok' | 'err'; showAuthForm?: boolean } | null }>()
+
+/** 右键菜单项的统一图标前缀（与全插件同一套图标）。 */
+function menuIcon(name: IconName): React.ReactElement {
+  return <span className="dsh-gp-menu-ico">{icon(name, 13)}</span>
+}
+
+/**
+ * 变更行尾的操作按钮：统一图标 + 即时 tooltip。
+ *
+ * 图标一律取自 icons.tsx，保证与视图内其它按钮同一套视觉语言；提示用自绘
+ * tooltip（原生 title 有延迟，用户看不到就会「不知道这按钮干啥」）。
+ */
+function RowAction(props: {
+  icon: IconName
+  label: string
+  danger?: boolean
+  onClick: (event: React.MouseEvent) => void
+}): React.ReactElement {
+  const { icon: name, label, danger, onClick } = props
+  return (
+    <button
+      type="button"
+      className={`dsh-gp-act${danger === true ? ' danger' : ''}`}
+      aria-label={label}
+      onMouseEnter={(event) => showTip(event.currentTarget, label)}
+      onMouseLeave={hideTip}
+      onFocus={(event) => showTip(event.currentTarget, label)}
+      onBlur={hideTip}
+      onClick={onClick}
+    >
+      {icon(name, 13)}
+    </button>
+  )
+}
 
 /** GitLens 风格的分支行（双行信息分层）：双击激活，右键打开菜单。 */
 const BranchRowView = memo(function BranchRowView(props: {
@@ -197,13 +267,15 @@ const BranchRowView = memo(function BranchRowView(props: {
   const t = useT()
   const isCurrent = !isRemote && row.name === current
   const badges = [
-    !isRemote && row.ahead ? <span key="a" className="dsh-gp-badge ahead">↑{row.ahead}</span> : null,
+    !isRemote && row.ahead ? (
+      <span key="a" className="dsh-gp-badge ahead">{icon('arrowUp', 11)}{row.ahead}</span>
+    ) : null,
     !isRemote && row.behind ? (
       <span
         key="b"
         className={`dsh-gp-badge behind ${busy && isCurrent ? 'busy' : ''}`}
         style={{ cursor: isCurrent && !busy ? 'pointer' : 'default' }}
-        title={busy && isCurrent ? '正在拉取更新中...' : `落后上游 ${row.behind} 个提交，点击立即拉取更新 (git pull)`}
+        title={busy && isCurrent ? t('panel.pullingNow') : t('panel.behindHint', { count: String(row.behind) })}
         onClick={(e) => {
           if (isCurrent && !busy && onPull) {
             e.stopPropagation()
@@ -211,7 +283,8 @@ const BranchRowView = memo(function BranchRowView(props: {
           }
         }}
       >
-        ↓{row.behind}
+        {busy && isCurrent ? <span className="dsh-gp-spinner" /> : icon('arrowDown', 11)}
+        {busy && isCurrent ? t('panel.pullingNow') : row.behind}
       </span>
     ) : null,
     isCurrent ? <span key="c" className="dsh-gp-badge current">{t('badge.current')}</span> : null,
@@ -655,11 +728,19 @@ export function GitPanel(props: {
   const loadSeq = useRef(0)
   const [busy, setBusyState] = useState(() => GLOBAL_GIT_BUSY_MAP.get(path)?.busy ?? false)
   const [message, setMessageState] = useState<{ text: string; kind: 'ok' | 'err'; showAuthForm?: boolean } | null>(() => GLOBAL_GIT_BUSY_MAP.get(path)?.message ?? null)
+  // 当前正在执行的操作种类（pull / push / sync / fetch / commit …），用于只在
+  // 真正被触发的那个入口上转 loading，而不是让整面板所有按钮一起转。
+  const [pendingOp, setPendingOpState] = useState<string | null>(() => GLOBAL_GIT_BUSY_MAP.get(path)?.pendingOp ?? null)
 
   const setBusy = (val: boolean): void => {
     setBusyState(val)
     const cur = GLOBAL_GIT_BUSY_MAP.get(path) || {}
     GLOBAL_GIT_BUSY_MAP.set(path, { ...cur, busy: val })
+  }
+  const setPendingOp = (op: string | null): void => {
+    setPendingOpState(op)
+    const cur = GLOBAL_GIT_BUSY_MAP.get(path) || {}
+    GLOBAL_GIT_BUSY_MAP.set(path, { ...cur, pendingOp: op })
   }
   const setMessage = (msg: { text: string; kind: 'ok' | 'err'; showAuthForm?: boolean } | null): void => {
     setMessageState(msg)
@@ -672,6 +753,7 @@ export function GitPanel(props: {
     const globalState = GLOBAL_GIT_BUSY_MAP.get(path)
     if (globalState) {
       if (globalState.busy !== undefined) setBusyState(globalState.busy)
+      if (globalState.pendingOp !== undefined) setPendingOpState(globalState.pendingOp)
       if (globalState.message !== undefined) setMessageState(globalState.message)
     }
   }, [path])
@@ -712,8 +794,8 @@ export function GitPanel(props: {
     if (seq !== loadSeq.current) return
     if (b.ok) setBranches(b.value)
     if (g.ok) setGraph(g.value)
-    if (!b.ok) setMessage({ text: b.error.message, kind: 'err' })
-    else if (!g.ok) setMessage({ text: g.error.message, kind: 'err' })
+    if (!b.ok) setMessage({ text: tError(b.error.code, b.error.message), kind: 'err' })
+    else if (!g.ok) setMessage({ text: tError(g.error.code, g.error.message), kind: 'err' })
     setLoading(false)
   }, [path, api])
 
@@ -727,11 +809,15 @@ export function GitPanel(props: {
     const result = await api.status(path)
     const output = result.ok ? result.value.output : ''
     setStatusText(output)
-    // 解析 porcelain 行：状态码 + 路径。
+    // porcelain 固定宽度：前 2 字符是 XY 状态码，第 3 字符是分隔空格，其余是路径。
+    // 不能用 /^(\S+)\s+/：未暂存修改的 X 位本身是空格（" M path"），会被整行漏掉，
+    // 导致「仅工作区修改」的文件在变更列表里彻底消失。
     const list: Array<{ code: string; file: string }> = []
     for (const line of output.split('\n')) {
-      const m = line.match(/^(\S+)\s+(.+)$/)
-      if (m !== null) list.push({ code: m[1], file: m[2] })
+      if (line.trim() === '' || line.length < 4) continue
+      const code = line.slice(0, 2)
+      const file = line.slice(3).trim()
+      if (file !== '') list.push({ code, file })
     }
     setChanges(list)
   }, [path, api])
@@ -741,16 +827,17 @@ export function GitPanel(props: {
     if (!path) return
     setDiffState({ file, content: '', busy: true })
     const result = await api.diffFile(path, file)
-    setDiffState({ file, content: result.ok ? result.value.output : result.error?.message ?? '', busy: false })
+    setDiffState({ file, content: result.ok ? result.value.output : tError(result.error?.code, result.error?.message ?? ''), busy: false })
   }, [path, api])
 
   useEffect(() => {
     void refreshStatus()
   }, [refreshStatus])
 
-  const runWrite = useCallback(async (action: 'commit' | 'push' | 'stash-push' | 'stash-pop' | 'stage' | 'unstage' | 'discard', extra?: string): Promise<void> => {
+  const runWrite = useCallback(async (action: 'commit' | 'push' | 'stash-push' | 'stash-pop' | 'stage' | 'unstage' | 'discard' | 'sync', extra?: string): Promise<void> => {
     if (!path || busy) return
     setBusy(true)
+    setPendingOp(action)
     setMessage(null)
     let result: { ok: boolean; output?: string; error?: { code: string; message: string } }
     try {
@@ -758,6 +845,9 @@ export function GitPanel(props: {
         result = await api.commit(path, extra ?? commitMsg)
       } else if (action === 'push') {
         result = await api.push(path)
+      } else if (action === 'sync') {
+        // 官方此前的 sync 按钮漏了分支，会掉进最后的 discard 兜底（等同误删改动），这里补上。
+        result = await api.sync(path)
       } else if (action === 'stash-push') {
         result = await api.stashPush(path, extra)
       } else if (action === 'stash-pop') {
@@ -773,7 +863,6 @@ export function GitPanel(props: {
     } catch (error) {
       result = { ok: false, error: { code: 'internal', message: error instanceof Error ? error.message : String(error) } }
     }
-    setBusy(false)
     if (result.ok) {
       setMessage({ text: result.output ?? t('op.ok'), kind: 'ok' })
       if (action === 'commit' || action === 'stash-pop') setCommitMsg('')
@@ -781,14 +870,16 @@ export function GitPanel(props: {
       void load()
       onRefreshStatus?.()
     } else {
-      let errMsg = result.error?.message ?? t('op.failed')
+      let errMsg = tError(result.error?.code, result.error?.message ?? t('op.failed'))
       let showAuthForm = false
       if (errMsg.includes('OAuth') || errMsg.includes('Authentication') || errMsg.includes('fatal: could not read Username') || errMsg.includes('terminal prompts disabled')) {
-        errMsg = '⚠️ 缺少 GitLab 访问凭据或认证失败，请在下方直接输入账号密码即可一键保存：'
+        errMsg = t('panel.needCredential')
         showAuthForm = true
       }
       setMessage({ text: errMsg, kind: 'err', showAuthForm })
     }
+    setPendingOp(null)
+    setBusy(false)
   }, [path, api, busy, commitMsg, t, refreshStatus, load, onRefreshStatus])
 
   // 输入 dock 的 chip 会在一次成功的分支切换后派发这个事件。
@@ -818,28 +909,36 @@ export function GitPanel(props: {
     )
   }
 
-  const runOp = useCallback(async (label: string, op: () => Promise<Envelope<OpResult>>): Promise<void> => {
+  const runOp = useCallback(async (label: string, op: () => Promise<Envelope<OpResult>>, kind?: string): Promise<void> => {
     setBusy(true)
-    setMessage({ text: `⏳ 正在执行 ${label}...`, kind: 'ok' })
+    setPendingOp(kind ?? label)
+    setMessage({ text: t('panel.running', { label: label }), kind: 'ok' })
     const result = await op()
     if (result.ok) {
       setMessage({ text: result.value.output || t('op.done', { label }), kind: 'ok' })
       await load()
     } else {
-      let errMsg = result.error.message || '操作失败'
+      let errMsg = tError(result.error.code, result.error.message || t('panel.opFailed'))
       let showAuthForm = false
       if (errMsg.includes('OAuth') || errMsg.includes('Authentication') || errMsg.includes('fatal: could not read Username') || errMsg.includes('terminal prompts disabled')) {
-        errMsg = '⚠️ 缺少 GitLab 访问凭据或认证失败，请在下方直接输入账号密码即可一键保存：'
+        errMsg = t('panel.needCredential')
         showAuthForm = true
-      } else if (errMsg.includes('timed out') || errMsg.includes('超时')) {
-        errMsg = '⚠️ 操作超时：网络连接失败或远程服务器无响应。'
       }
       setMessage({ text: errMsg, kind: 'err', showAuthForm })
     }
+    setPendingOp(null)
     setBusy(false)
   }, [load, t])
 
   const repoName = branches?.repo ?? ''
+  // 进行中操作的本地化名称（用于进度条/按钮的无障碍标签）。
+  const pendingOpLabel =
+    pendingOp === 'pull' ? t('op.pulling')
+    : pendingOp === 'push' ? t('op.pushing')
+    : pendingOp === 'sync' ? t('op.syncing')
+    : pendingOp === 'fetch' ? t('op.fetching')
+    : pendingOp !== null ? t('panel.running', { label: pendingOp })
+    : null
 
   // ---- 上下文菜单操作 ----
   // 稳定的引用，使被 memo 化的 BranchRowView 不会因无关状态变化（message、
@@ -858,7 +957,7 @@ export function GitPanel(props: {
 
   const activateLocal = useCallback((branch: string): void => {
     if (branch === branches?.current) {
-      void runOp(t('op.pull'), () => api.pull(path))
+      void runOp(t('op.pull'), () => api.pull(path), 'pull')
     } else {
       void runOp(t('op.switch'), () => api.switchBranch(path, branch))
     }
@@ -912,12 +1011,15 @@ export function GitPanel(props: {
         <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 11 }}>{repoName}</span>
         <span className="spacer" />
         <button className="dsh-gp-btn" disabled={loading || busy} onClick={() => void load()} title={t('op.refresh')}>
-          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
-            strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 1.5v3h-3" />
-          </svg>
+          {loading || busy ? (
+            <span className="dsh-gp-spinner" role="status" aria-label={busy && pendingOp === 'pull' ? t('op.pulling') : t('op.refresh')} />
+          ) : (
+            icon('refresh', 13)
+          )}
         </button>
       </div>
+      {/* 顶部不确定进度条：任何拉取/推送/同步/提交进行中都会显示 */}
+      {busy ? <div className="dsh-gp-progress" role="progressbar" aria-label={pendingOpLabel ?? t('op.refresh')} /> : null}
       <div className="dsh-gp-tabs">
         <div className={`dsh-gp-tab${tab === 'branches' ? ' active' : ''}`} onClick={() => setTab('branches')}>{t('tab.branches')}</div>
         <div className={`dsh-gp-tab${tab === 'graph' ? ' active' : ''}`} onClick={() => setTab('graph')}>{t('tab.graph')}</div>
@@ -932,9 +1034,13 @@ export function GitPanel(props: {
           <button className="dsh-gp-btn" disabled={busy || commitMsg.trim() === ''}
             onClick={() => void runWrite('commit')}>{t('write.commit')}</button>
           <button className="dsh-gp-btn" disabled={busy}
-            onClick={() => void runWrite('push')}>{t('write.push')}</button>
+            onClick={() => void runWrite('push')}>
+            {pendingOp === 'push' ? <><span className="dsh-gp-spinner" /> {t('op.pushing')}</> : t('write.push')}
+          </button>
           <button className="dsh-gp-btn" disabled={busy}
-            onClick={() => void runWrite('sync' as any)}>{t('write.sync')}</button>
+            onClick={() => void runWrite('sync')}>
+            {pendingOp === 'sync' ? <><span className="dsh-gp-spinner" /> {t('op.syncing')}</> : t('write.sync')}
+          </button>
         </div>
         <div className="dsh-gp-write-row">
           <button className="dsh-gp-btn" disabled={busy}
@@ -956,21 +1062,32 @@ export function GitPanel(props: {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 0 4px', fontSize: 11, color: 'var(--muted)' }}>
                 <span>{t('changes.title')} ({changes.length})</span>
                 <button type="button" className="dsh-gp-btn"
-                  title={t('changes.sendToChat')}
+                  title={conflicts.length > 0 ? t('changes.sendConflictsToChat') : t('changes.sendToChat')}
                   style={{ fontSize: 11, padding: '1px 6px' }}
                   onClick={() => {
-                    const fileLines = changes.map(c => `- \`${c.code}\` ${c.file}`).join('\n')
-                    const prompt = `当前 Git 工作区有以下 ${changes.length} 处变更：\n${fileLines}\n\n请帮我检查这些更改并根据规范生成清晰的 Git Commit Message。`
+                    let prompt: string
+                    if (conflicts.length > 0) {
+                      const conflictList = conflicts.map(c => `- \`${c.file}\` (CONFLICT)`).join('\n')
+                      prompt = t('prompt.conflicts', {
+                        count: String(conflicts.length),
+                        conflictList,
+                        otherCount: String(changes.length - conflicts.length),
+                      })
+                    } else {
+                      const fileLines = changes.map(c => `- \`${c.code}\` ${c.file}`).join('\n')
+                      prompt = t('prompt.normal', { count: String(changes.length), fileList: fileLines })
+                    }
                     if (injectTextToChatInput(prompt)) {
                       setMessage({ kind: 'ok', text: t('changes.sentSuccess') })
                     }
                   }}>
-                  💬 {t('changes.sendToChat')}
+                  <span className="dsh-gp-btn-ico">{icon(conflicts.length > 0 ? 'conflict' : 'chat', 13)}</span>
+                  {conflicts.length > 0 ? t('changes.sendConflictsToChat') : t('changes.sendToChat')}
                 </button>
               </div>
               {conflicts.length > 0 ? (
                 <div className="dsh-gp-conflict-banner">
-                  ⚠️ {t('changes.conflicts', { count: String(conflicts.length) })}
+                  {icon('conflict', 13)} {t('changes.conflicts', { count: String(conflicts.length) })}
                 </div>
               ) : null}
 
@@ -1000,24 +1117,24 @@ export function GitPanel(props: {
                       <div key={c.file} className="dsh-gp-changes-item" onClick={() => void loadDiff(c.file)}>
                         <span className="dsh-gp-changes-code">{c.code}</span>
                         <span className="dsh-gp-changes-file" title={c.file}>{c.file}</span>
-                        <button type="button" className="dsh-gp-file-act" title={t('changes.copyPath')}
+                        <RowAction icon="copy" label={t('changes.copyPath')}
                           onClick={(e) => {
                             e.stopPropagation()
                             try {
                               navigator.clipboard.writeText(c.file)
                               setMessage({ kind: 'ok', text: t('changes.copyPathDone') })
                             } catch {}
-                          }}>📋</button>
-                        <button type="button" className="dsh-gp-file-act" title={t('changes.fileToChat')}
+                          }} />
+                        <RowAction icon="chat" label={t('changes.fileToChat')}
                           onClick={(e) => {
                             e.stopPropagation()
-                            const prompt = `请帮我分析已暂存文件：\`${c.file}\``
+                            const prompt = t('prompt.stagedFile', { file: c.file })
                             if (injectTextToChatInput(prompt)) {
                               setMessage({ kind: 'ok', text: t('changes.sentSuccess') })
                             }
-                          }}>💬</button>
-                        <button type="button" className="dsh-gp-file-act" title={t('changes.unstage')}
-                          onClick={(e) => { e.stopPropagation(); void runWrite('unstage' as any, c.file) }}>−</button>
+                          }} />
+                        <RowAction icon="minus" label={t('changes.unstage')}
+                          onClick={(e) => { e.stopPropagation(); void runWrite('unstage', c.file) }} />
                       </div>
                     ))}
                   </div>
@@ -1032,40 +1149,40 @@ export function GitPanel(props: {
                   <div className="dsh-gp-changes-list">
                     {unstaged.map((c) => (
                       <div key={c.file} className="dsh-gp-changes-item"
-                        title="点击在右侧栏打开完整 Git 对比（VS Code 风格）"
+                        title={t('changes.openFullDiff')}
                         onClick={() => {
                           if (onOpenDiff?.(c.file) === true) return
                           void loadDiff(c.file)
                         }}>
                         <span className="dsh-gp-changes-code">{c.code}</span>
                         <span className="dsh-gp-changes-file" title={c.file}>{c.file}</span>
-                        <button type="button" className="dsh-gp-file-act" title="内嵌查看 diff"
-                          onClick={(e) => { e.stopPropagation(); void loadDiff(c.file) }}>≡</button>
-                        <button type="button" className="dsh-gp-file-act" title={t('changes.copyPath')}
+                        <RowAction icon="unified" label={t('changes.inlineDiff')}
+                          onClick={(e) => { e.stopPropagation(); void loadDiff(c.file) }} />
+                        <RowAction icon="copy" label={t('changes.copyPath')}
                           onClick={(e) => {
                             e.stopPropagation()
                             try {
                               navigator.clipboard.writeText(c.file)
                               setMessage({ kind: 'ok', text: t('changes.copyPathDone') })
                             } catch {}
-                          }}>📋</button>
-                        <button type="button" className="dsh-gp-file-act" title={t('changes.fileToChat')}
+                          }} />
+                        <RowAction icon="chat" label={t('changes.fileToChat')}
                           onClick={(e) => {
                             e.stopPropagation()
-                            const prompt = `请帮我分析并处理该文件的改动：\`${c.file}\``
+                            const prompt = t('prompt.fileChange', { file: c.file })
                             if (injectTextToChatInput(prompt)) {
                               setMessage({ kind: 'ok', text: t('changes.sentSuccess') })
                             }
-                          }}>💬</button>
-                        <button type="button" className="dsh-gp-file-act" title={t('changes.stage')}
-                          onClick={(e) => { e.stopPropagation(); void runWrite('stage' as any, c.file) }}>+</button>
-                        <button type="button" className="dsh-gp-file-act" title={t('changes.discard')}
+                          }} />
+                        <RowAction icon="plus" label={t('changes.stage')}
+                          onClick={(e) => { e.stopPropagation(); void runWrite('stage', c.file) }} />
+                        <RowAction icon="undo" danger label={t('changes.discard')}
                           onClick={(e) => {
                             e.stopPropagation()
                             if (window.confirm(t('changes.discardConfirm', { file: c.file }))) {
-                              void runWrite('discard' as any, `${c.file}|${c.code === '??' ? 'untracked' : ''}`)
+                              void runWrite('discard', `${c.file}|${c.code === '??' ? 'untracked' : ''}`)
                             }
-                          }}>↩</button>
+                          }} />
                       </div>
                     ))}
                   </div>
@@ -1080,16 +1197,16 @@ export function GitPanel(props: {
                       title={t('changes.diffToChat')}
                       style={{ marginLeft: 'auto', fontSize: 11, padding: '0 6px', whiteSpace: 'nowrap' }}
                       onClick={() => {
-                        const prompt = `请帮我 Review 文件 \`${diffState.file}\` 的以下 Diff 改动：\n\`\`\`diff\n${diffState.content.slice(0, 8000)}\n\`\`\``
+                        const prompt = t('prompt.reviewDiff', { file: diffState.file, diff: diffState.content.slice(0, 8000) })
                         if (injectTextToChatInput(prompt)) {
                           setMessage({ kind: 'ok', text: t('changes.sentSuccess') })
                         }
                       }}>
-                      💬 {t('changes.diffToChat')}
+                      {icon('chat', 13)} {t('changes.diffToChat')}
                     </button>
                     <button type="button" className="dsh-gp-btn"
                       onClick={() => setDiffState(null)} style={{ fontSize: 11, padding: '0 6px' }}>
-                      ✕
+                      {icon('close', 13)}
                     </button>
                   </div>
                   {diffState.busy ? (
@@ -1145,19 +1262,27 @@ export function GitPanel(props: {
         ) : null}
         {message && (branches || graph) ? (
           <div className={`dsh-gp-msg ${message.kind}`}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-              <span>{message.text}</span>
+            <div className="dsh-gp-msg-row">
+              <span className="dsh-gp-msg-text">
+                {busy ? <span className="dsh-gp-spinner" aria-hidden="true" /> : null}
+                {message.text}
+              </span>
               {busy ? (
                 <button
                   type="button"
-                  className="dsh-gp-btn"
-                  style={{ fontSize: 10, padding: '1px 6px', flex: 'none' }}
+                  className="dsh-gp-cancel"
+                  title={t('panel.cancelOp')}
+                  aria-label={t('panel.cancelOp')}
                   onClick={() => {
+                    // 真正中止后台 git 进程，而不只是把界面状态清掉。
+                    void api.cancel(path)
+                    setPendingOp(null)
                     setBusy(false)
-                    setMessage({ text: '已取消当前操作等待', kind: 'ok' })
+                    setMessage({ text: t('panel.cancelled'), kind: 'ok' })
                   }}
                 >
-                  ✕ 取消
+                  {icon('close', 12)}
+                  <span>{t('menu.cancel')}</span>
                 </button>
               ) : null}
             </div>
@@ -1171,18 +1296,18 @@ export function GitPanel(props: {
                 gap: 6,
                 marginTop: 4,
               }}>
-                <div style={{ fontWeight: 600, fontSize: 11 }}>🔑 在此原位配置 Git 访问凭据（免终端配置，自动保存）：</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, fontSize: 11 }}>{icon('key', 13)}{t('auth.title')}</div>
                 <input
                   id="dsh-git-auth-user"
                   className="dsh-gp-input"
-                  placeholder="用户名（或邮箱前缀，如 jaden.tang）"
+                  placeholder={t('auth.usernamePlaceholder')}
                   defaultValue="jaden.tang"
                 />
                 <input
                   id="dsh-git-auth-pass"
                   type="password"
                   className="dsh-gp-input"
-                  placeholder="密码或 GitLab Personal Access Token"
+                  placeholder={t('auth.passwordPlaceholder')}
                 />
                 <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 2 }}>
                   <button
@@ -1192,27 +1317,27 @@ export function GitPanel(props: {
                       const u = (document.getElementById('dsh-git-auth-user') as HTMLInputElement)?.value.trim()
                       const p = (document.getElementById('dsh-git-auth-pass') as HTMLInputElement)?.value.trim()
                       if (!u || !p) {
-                        alert('请填写用户名和密码/Token')
+                        alert(t('auth.fillBoth'))
                         return
                       }
-                      setMessage({ text: '正在保存凭据并自动配置...', kind: 'ok' })
+                      setMessage({ text: t('auth.saving'), kind: 'ok' })
                       const res = await api.setCredential(path, 'gitlab.sjfood.us', u, p)
                       if (res.ok) {
-                        setMessage({ text: '✅ 凭据已成功保存！正在自动为您重试拉取/同步...', kind: 'ok' })
-                        void runOp(t('op.pull'), () => api.pull(path))
+                        setMessage({ text: t('auth.saved'), kind: 'ok' })
+                        void runOp(t('op.pull'), () => api.pull(path), 'pull')
                       } else {
-                        setMessage({ text: `保存失败: ${res.error?.message}`, kind: 'err' })
+                        setMessage({ text: t('auth.saveFailed', { reason: tError(res.error?.code, res.error?.message ?? String(res)) }), kind: 'err' })
                       }
                     }}
                   >
-                    💾 记住凭据并立即重试
+                    {icon('save', 13)} {t('auth.saveAndRetry')}
                   </button>
                   <button
                     type="button"
                     className="dsh-gp-btn"
                     onClick={() => setMessage(null)}
                   >
-                    取消
+                    {t('menu.cancel')}
                   </button>
                 </div>
               </div>
@@ -1245,7 +1370,7 @@ export function GitPanel(props: {
                       current={branches.current}
                       busy={busy}
                       onActivate={activateLocal}
-                      onPull={() => void runOp(t('op.pull'), () => api.pull(path))}
+                      onPull={() => void runOp(t('op.pull'), () => api.pull(path), 'pull')}
                       onContextMenu={openMenu}
                     />
                   ))}
@@ -1266,7 +1391,7 @@ export function GitPanel(props: {
               )
             })()}
             <div style={{ padding: 8 }}>
-              <button className="dsh-gp-btn" disabled={busy} onClick={() => void runOp(t('fetch.all'), () => api.fetchAll(path))}>
+              <button className="dsh-gp-btn" disabled={busy} onClick={() => void runOp(t('fetch.all'), () => api.fetchAll(path), 'fetch')}>
                 {t('fetch.all')}
               </button>
             </div>
@@ -1335,10 +1460,16 @@ export function GitPanel(props: {
                     onClick={() => {
                       if (busy) return
                       closeMenu()
-                      void runOp(t('op.pull'), () => api.pull(path))
+                      void runOp(t('op.pull'), () => api.pull(path), 'pull')
                     }}
                   >
-                    {busy ? '⏳ 正在同步中...' : '⬇️ 拉取更新 (Pull)'}
+                    {busy && pendingOp === 'pull' ? (
+                      <><span className="dsh-gp-spinner" /> {t('op.pulling')}</>
+                    ) : busy ? (
+                      t('menu.busySyncing')
+                    ) : (
+                      <>{menuIcon('arrowDown')}{t('menu.pull')}</>
+                    )}
                   </div>
                 ) : null}
                 <div
@@ -1347,10 +1478,16 @@ export function GitPanel(props: {
                   onClick={() => {
                     if (busy) return
                     closeMenu()
-                    void runOp(t('fetch.all'), () => api.fetchAll(path))
+                    void runOp(t('fetch.all'), () => api.fetchAll(path), 'fetch')
                   }}
                 >
-                  {busy ? '⏳ 正在同步中...' : '🔄 抓取全部 (Fetch all)'}
+                  {busy && pendingOp === 'fetch' ? (
+                    <><span className="dsh-gp-spinner" /> {t('op.fetching')}</>
+                  ) : busy ? (
+                    t('menu.busySyncing')
+                  ) : (
+                    <>{menuIcon('fetch')}{t('menu.fetchAll')}</>
+                  )}
                 </div>
                 <div className="dsh-gp-menu-item" onClick={() => setMenuMode('rename')}>{t('menu.rename')}</div>
                 {!menu.isCurrent && !menu.isRemote ? (

@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { BranchesView } from '../core/types.ts'
 import { GitPanelApi } from './api.ts'
+import { icon } from './icons.tsx'
 import { useT } from './i18n.ts'
 
 const CHIP_STYLE = `
@@ -245,11 +246,11 @@ export function BranchChip(props: BranchChipProps): React.ReactElement | null {
               <div key={branch.name} role="option" aria-selected={branch.name === current}
                 className={`dsh-gpc-row${branch.name === current ? ' current' : ''}`}
                 onClick={() => void switchTo(branch.name)}>
-                <span className="check">{branch.name === current ? '✓' : ''}</span>
+                <span className="check">{branch.name === current ? icon('check', 12) : null}</span>
                 <span className="name">{branch.name}</span>
                 {branch.ahead || branch.behind ? (
                   <span style={{ color: 'var(--gpc-muted)', fontSize: 11 }}>
-                    {branch.ahead ? `↑${branch.ahead}` : ''}{branch.behind ? `↓${branch.behind}` : ''}
+                    {branch.ahead ? <>{icon('arrowUp', 11)}{branch.ahead}</> : null}{branch.behind ? <>{icon('arrowDown', 11)}{branch.behind}</> : null}
                   </span>
                 ) : null}
               </div>

@@ -45,6 +45,11 @@ export class GitPanelApi {
     return post<OpResult>('/git-panel/switch', { path, branch })
   }
 
+  /** 中止当前在飞的 git 进程。 */
+  cancel(path: string) {
+    return post<{ cancelled: boolean }>('/git-panel/cancel', { path })
+  }
+
   pull(path: string) {
     return post<OpResult>('/git-panel/pull', { path })
   }

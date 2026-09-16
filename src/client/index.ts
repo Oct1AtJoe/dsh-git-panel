@@ -16,7 +16,7 @@ import { createElement } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { GitPanelApi } from './api.ts'
 import { BranchChip } from './BranchChip.tsx'
-import { initI18n } from './i18n.ts'
+import { initI18n, t } from './i18n.ts'
 import { GitTabBody } from './GitTab.tsx'
 import { GitDiffView } from './GitDiffView.tsx'
 import { GitStatusCache } from './git-status.ts'
@@ -166,7 +166,7 @@ export function apply(ctx: PanelClientContext): void {
           title: () => 'Git',
           guide: [{
             order: 12,
-            title: () => 'Git 版本控制与提交图谱',
+            title: () => t('tab.gitTitle'),
           }],
         })
 

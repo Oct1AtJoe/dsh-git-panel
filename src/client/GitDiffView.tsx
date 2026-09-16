@@ -15,6 +15,8 @@
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { GitPanelApi } from './api.ts'
+import { t, tError, useT } from './i18n.ts'
+import { icon, type IconName } from './icons.tsx'
 import { diffRows, diffStat, type DiffRow } from './diff.ts'
 import { basenameOf, parseFileAddress } from './refs.ts'
 import { STATUS_COLORS, statusLetter } from './git-status.ts'
@@ -155,32 +157,25 @@ function ensureStyle(): void {
 }
 
 /** 工具栏图标：统一的 15×15 线性图标。 */
+/** 图标名映射：视图内的语义名 → 统一图标库的图标名。 */
+const GLYPH_MAP: Record<string, IconName> = {
+  file: 'file',
+  split: 'split',
+  unified: 'unified',
+  edit: 'edit',
+  conflict: 'conflict',
+  wrap: 'wrap',
+  fold: 'fold',
+  code: 'code',
+  stage: 'plus',
+  save: 'save',
+  check: 'check',
+  both: 'both',
+}
+
+/** 渲染统一风格的图标（全部来自 icons.tsx，保证与面板同一套视觉语言）。 */
 function glyph(kind: string): React.ReactElement {
-  const paths: Record<string, React.ReactNode[]> = {
-    file: [createElement('path', { key: 'a', d: 'M4.2 1.8h4.3L12 5.3v8.9H4.2z' }), createElement('path', { key: 'b', d: 'M8.4 1.8v3.6H12' })],
-    split: [createElement('rect', { key: 'a', x: 2.2, y: 3.2, width: 11.6, height: 9.6, rx: 1.4 }), createElement('path', { key: 'b', d: 'M8 3.2v9.6' })],
-    unified: [createElement('path', { key: 'a', d: 'M3 4.6h10M3 8h10M3 11.4h5.5' })],
-    edit: [createElement('path', { key: 'a', d: 'M10.9 2.4l2.7 2.7-7.2 7.2H3.7v-2.7z' }), createElement('path', { key: 'b', d: 'M9.6 3.7l2.7 2.7' })],
-    conflict: [createElement('path', { key: 'a', d: 'M8 2.4l5.7 10.2H2.3z' }), createElement('path', { key: 'b', d: 'M8 6.4v3.1M8 11.4h.01' })],
-    wrap: [createElement('path', { key: 'a', d: 'M3 4.4h10M3 11.6h4M3 8h7.2a2 2 0 010 4H8.4' }), createElement('path', { key: 'b', d: 'M9.6 10.4L8.2 12l1.4 1.6' })],
-    fold: [createElement('path', { key: 'a', d: 'M4.4 6.2L8 2.9l3.6 3.3M4.4 9.8L8 13.1l3.6-3.3' })],
-    code: [createElement('path', { key: 'a', d: 'M5.9 4.2L2.4 8l3.5 3.8M10.1 4.2L13.6 8l-3.5 3.8' })],
-    stage: [createElement('path', { key: 'a', d: 'M8 3.2v9.6M3.2 8h9.6' })],
-    save: [createElement('path', { key: 'a', d: 'M8 2.6v6.4M5.2 6.4L8 9.2l2.8-2.8M3.4 13h9.2' })],
-    check: [createElement('path', { key: 'a', d: 'M3.4 8.4l3 3 6.2-6.8' })],
-  }
-  return createElement('svg', {
-    className: 'dsh-gd-ico',
-    viewBox: '0 0 16 16',
-    width: 15,
-    height: 15,
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.4,
-    strokeLinecap: 'round',
-    strokeLinejoin: 'round',
-    'aria-hidden': 'true',
-  }, ...(paths[kind] ?? []))
+  return icon(GLYPH_MAP[kind] ?? 'info', 15)
 }
 
 /** 一个图标开关按钮（选中态用品牌色底）。 */
@@ -205,6 +200,7 @@ function iconButton(
 
 /** Git 变更对比视图。 */
 export function GitDiffView(props: GitDiffViewProps): React.ReactElement {
+  useT() // 订阅语言切换：语言变化时重渲染，下面的 t() 输出对应语种
   ensureStyle()
   const info = props.useTabInfo?.()
   const tab = info?.tab
@@ -264,7 +260,7 @@ export function GitDiffView(props: GitDiffViewProps): React.ReactElement {
         setMissing(value.missing === true)
       } else {
         setWorking('')
-        setError(workResult.ok ? workResult.value.error?.message ?? '读取失败' : workResult.error.message)
+        setError(workResult.ok ? tError(workResult.value.error?.code, workResult.value.error?.message ?? t('diff.loadFailed')) : tError(workResult.error.code, workResult.error.message))
       }
       if (statusResult.ok) {
         const entry = statusResult.value.entries.find((candidate) => candidate.path === file)
@@ -309,10 +305,10 @@ export function GitDiffView(props: GitDiffViewProps): React.ReactElement {
       const result = await api.saveFile(cwd, file, working)
       if (result.ok && result.value.ok) {
         setBaseline(working)
-        setNote({ text: '已保存到工作区', kind: 'ok' })
+        setNote({ text: t('diff.saved'), kind: 'ok' })
         await load()
       } else {
-        setNote({ text: result.ok ? result.value.error?.message ?? '保存失败' : result.error.message, kind: 'err' })
+        setNote({ text: result.ok ? tError(result.value.error?.code, result.value.error?.message ?? t('diff.saveFailed')) : tError(result.error.code, result.error.message), kind: 'err' })
       }
     } finally {
       setBusy(false)
@@ -326,8 +322,8 @@ export function GitDiffView(props: GitDiffViewProps): React.ReactElement {
     try {
       const result = await api.stageFile(cwd, file)
       setNote(result.ok && result.value.ok
-        ? { text: '已暂存（git add）', kind: 'ok' }
-        : { text: result.ok ? result.value.error?.message ?? '暂存失败' : result.error.message, kind: 'err' })
+        ? { text: t('diff.staged'), kind: 'ok' }
+        : { text: result.ok ? tError(result.value.error?.code, result.value.error?.message ?? t('diff.stageFailed')) : tError(result.error.code, result.error.message), kind: 'err' })
     } finally {
       setBusy(false)
     }
@@ -337,7 +333,7 @@ export function GitDiffView(props: GitDiffViewProps): React.ReactElement {
     try {
       tab?.actions.openResource(address, { kind: 'text' })
     } catch (openError) {
-      setNote({ text: openError instanceof Error ? openError.message : '无法打开源码视图', kind: 'err' })
+      setNote({ text: openError instanceof Error ? openError.message : t('diff.openFailed'), kind: 'err' })
     }
   }, [address, tab])
 
@@ -353,25 +349,25 @@ export function GitDiffView(props: GitDiffViewProps): React.ReactElement {
         status !== undefined && createElement('span', {
           className: 'dsh-gd-badge',
           style: { color, borderColor: `${color}66`, background: `${color}1f` },
-          title: `git 状态：${status}`,
+          title: t('diff.gitStatus', { status: status }),
         }, status),
-        isNew && createElement('span', { className: 'dsh-gd-tag', title: 'HEAD 中不存在这个文件' }, '新增'),
+        isNew && createElement('span', { className: 'dsh-gd-tag', title: t('diff.notInHead') }, t('diff.tagNew')),
         createElement('span', { className: 'dsh-gd-path', title: file }, file),
         createElement('span', { className: 'dsh-gd-stat' },
-          createElement('span', { className: 'dsh-gd-add', title: `${stat.added} 行新增` }, `+${stat.added}`),
-          createElement('span', { className: 'dsh-gd-del', title: `${stat.removed} 行删除` }, `−${stat.removed}`),
+          createElement('span', { className: 'dsh-gd-add', title: t('diff.linesAdded', { count: String(stat.added) }) }, `+${stat.added}`),
+          createElement('span', { className: 'dsh-gd-del', title: t('diff.linesRemoved', { count: String(stat.removed) }) }, `−${stat.removed}`),
         ),
       ),
       createElement('span', { className: 'dsh-gd-spacer' }),
       // ---- 右：控件区（视图 / 选项 / 动作）----
       createElement('div', { className: 'dsh-gd-tools' },
-        createElement('div', { className: 'dsh-gd-seg', role: 'group', 'aria-label': '视图切换' },
-          iconButton('dsh-gd-split', '双栏对比', mode === 'split', () => setMode('split'), 'split'),
-          iconButton('dsh-gd-unified', '单栏对比', mode === 'unified', () => setMode('unified'), 'unified'),
-          iconButton('dsh-gd-edit', '编辑文件内容', mode === 'edit', () => setMode('edit'), 'edit'),
+        createElement('div', { className: 'dsh-gd-seg', role: 'group', 'aria-label': t('diff.viewSwitch') },
+          iconButton('dsh-gd-split', t('diff.split'), mode === 'split', () => setMode('split'), 'split'),
+          iconButton('dsh-gd-unified', t('diff.unified'), mode === 'unified', () => setMode('unified'), 'unified'),
+          iconButton('dsh-gd-edit', t('diff.edit'), mode === 'edit', () => setMode('edit'), 'edit'),
           conflicts.length > 0 && iconButton(
             'dsh-gd-conflict',
-            `处理合并冲突（${conflicts.length} 块）`,
+            t('diff.resolveConflicts', { count: String(conflicts.length) }),
             mode === 'conflict',
             () => setMode('conflict'),
             'conflict',
@@ -379,24 +375,24 @@ export function GitDiffView(props: GitDiffViewProps): React.ReactElement {
           ),
         ),
         createElement('span', { className: 'dsh-gd-sep', 'aria-hidden': 'true' }),
-        createElement('div', { className: 'dsh-gd-seg', role: 'group', 'aria-label': '显示选项' },
-          iconButton('dsh-gd-wrap', '自动换行', wrap, () => setWrap((value) => !value), 'wrap'),
-          iconButton('dsh-gd-fold', '折叠未改动区域', collapse, () => setCollapse((value) => !value), 'fold'),
+        createElement('div', { className: 'dsh-gd-seg', role: 'group', 'aria-label': t('diff.displayOptions') },
+          iconButton('dsh-gd-wrap', t('diff.wrap'), wrap, () => setWrap((value) => !value), 'wrap'),
+          iconButton('dsh-gd-fold', t('diff.fold'), collapse, () => setCollapse((value) => !value), 'fold'),
         ),
-        createElement('div', { className: 'dsh-gd-stepper', role: 'group', 'aria-label': '字号' },
+        createElement('div', { className: 'dsh-gd-stepper', role: 'group', 'aria-label': t('diff.fontSizeGroup') },
           createElement('button', {
             type: 'button',
             className: 'dsh-gd-step',
-            title: '缩小字号',
-            'aria-label': '缩小字号',
+            title: t('diff.fontSmaller'),
+            'aria-label': t('diff.fontSmaller'),
             onClick: () => setFontSize((value) => Math.max(10, value - 1)),
           }, 'A−'),
-          createElement('span', { className: 'dsh-gd-size', title: `当前字号 ${fontSize}px` }, String(fontSize)),
+          createElement('span', { className: 'dsh-gd-size', title: t('diff.fontCurrent', { size: String(fontSize) }) }, String(fontSize)),
           createElement('button', {
             type: 'button',
             className: 'dsh-gd-step',
-            title: '放大字号',
-            'aria-label': '放大字号',
+            title: t('diff.fontLarger'),
+            'aria-label': t('diff.fontLarger'),
             onClick: () => setFontSize((value) => Math.min(20, value + 1)),
           }, 'A+'),
         ),
@@ -406,37 +402,37 @@ export function GitDiffView(props: GitDiffViewProps): React.ReactElement {
             type: 'button',
             'data-gd-btn': 'source',
             className: 'dsh-gd-btn',
-            title: '用官方文本预览打开这个文件（代码 / 纯文本 / Markdown 等官方渲染器）',
+            title: t('diff.openOfficial'),
             onClick: openSource,
-          }, glyph('code'), createElement('span', null, '官方预览')),
+          }, glyph('code'), createElement('span', null, t('diff.officialPreview'))),
           createElement('button', {
             type: 'button',
             className: 'dsh-gd-btn',
-            title: '暂存该文件（git add）',
+            title: t('diff.stageFile'),
             disabled: busy,
             onClick: () => void stage(),
-          }, glyph('stage'), createElement('span', null, '暂存')),
+          }, glyph('stage'), createElement('span', null, t('diff.stage'))),
           createElement('button', {
             type: 'button',
             'data-gd-btn': 'save',
             className: `dsh-gd-btn${dirty ? ' primary dirty' : ' synced'}`,
-            title: dirty ? '保存改动到工作区' : '工作区内容与视图一致',
+            title: dirty ? t('diff.saveToWorkspace') : t('diff.inSync'),
             disabled: busy || !dirty,
             onClick: () => void save(),
-          }, glyph(dirty ? 'save' : 'check'), createElement('span', null, busy ? '处理中' : dirty ? '保存' : '已同步')),
+          }, glyph(dirty ? 'save' : 'check'), createElement('span', null, busy ? t('diff.processing') : dirty ? t('diff.save') : t('diff.synced'))),
         ),
       ),
     ),
     (note !== null || error !== null || binary || missing || isNew) && createElement('div', { className: 'dsh-gd-notes' },
       error !== null && createElement('span', { className: 'dsh-gd-note err' }, error),
-      binary && createElement('span', { className: 'dsh-gd-note' }, '二进制文件，无法显示文本差异'),
-      missing && createElement('span', { className: 'dsh-gd-note' }, '工作区中已不存在该文件（可能已删除）'),
-      isNew && createElement('span', { className: 'dsh-gd-note' }, '这是新增文件：左栏为空，全部内容为新增'),
+      binary && createElement('span', { className: 'dsh-gd-note' }, t('diff.binary')),
+      missing && createElement('span', { className: 'dsh-gd-note' }, t('diff.missing')),
+      isNew && createElement('span', { className: 'dsh-gd-note' }, t('diff.newFile')),
       note !== null && createElement('span', { className: `dsh-gd-note ${note.kind}` }, note.text),
     ),
     createElement('div', { className: 'dsh-gd-body', ref: scrollRef },
       loading
-        ? createElement('div', { className: 'dsh-gd-empty' }, '正在读取 git 数据…')
+        ? createElement('div', { className: 'dsh-gd-empty' }, t('diff.loading'))
         : mode === 'conflict'
           ? renderConflicts(conflicts, working, setWorking, setNote)
           : mode === 'edit'
@@ -457,8 +453,8 @@ export function GitDiffView(props: GitDiffViewProps): React.ReactElement {
                     key: item.key,
                     className: 'dsh-gd-gap',
                     onClick: () => setExpanded((held) => new Set([...held, item.from - CONTEXT_LINES])),
-                    title: '展开这段未改动的代码',
-                  }, `⋯ 展开 ${item.to - item.from} 行未改动`)
+                    title: t('diff.expandBlock'),
+                  }, t('diff.expandLines', { count: String(item.to - item.from) }))
                   : mode === 'unified'
                     ? renderUnifiedRow(item.row, item.key)
                     : renderSplitRow(item.row, item.key),
@@ -504,7 +500,7 @@ function renderConflicts(
   setNote: (note: { text: string; kind: 'ok' | 'err' } | null) => void,
 ): React.ReactElement {
   if (conflicts.length === 0) {
-    return createElement('div', { className: 'dsh-gd-empty ok' }, '✓ 本文件所有冲突已全部解决！请点击右上角「保存」写回文件。')
+    return createElement('div', { className: 'dsh-gd-empty ok' }, icon('check', 14), t('diff.allResolved'))
   }
 
   const lines = working.split('\n')
@@ -526,7 +522,8 @@ function renderConflicts(
           fontSize: 12,
         },
       },
-      '💡 提示：冲突核心与紧邻代码已直接置于首屏！逐块点击按钮合并冲突，处理完点击右上角「保存」写回磁盘。',
+      icon('bulb', 14),
+      t('diff.conflictHint'),
     ),
   )
 
@@ -555,13 +552,14 @@ function renderConflicts(
               cursor: 'pointer',
               textAlign: 'center',
             },
-            title: '点击查看完整历史代码',
+            title: t('diff.viewHistory'),
             onClick: () => {
               const el = document.getElementById(`gap-body-${cIdx}`)
               if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'
             },
           },
-          `↕️ 已折叠上方第 ${fromLine}–${toLine} 行未冲突代码 (${skippedCount} 行)`,
+          icon('fold', 13),
+          t('diff.foldedAbove', { from: String(fromLine), to: String(toLine), count: String(skippedCount) }),
         ),
         createElement(
           'div',
@@ -631,7 +629,7 @@ function renderConflicts(
               fontSize: 11.5,
             },
           },
-          createElement('span', { style: { fontWeight: 600, color: 'var(--danger, #ef4444)' } }, `⚠️ 冲突 ${cIdx + 1} / ${conflicts.length} · 行 ${block.start + 1}–${block.end + 1}`),
+          createElement('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 5, fontWeight: 600, color: 'var(--danger, #ef4444)' } }, icon('conflict', 14), t('diff.conflictHeader', { index: String(cIdx + 1), total: String(conflicts.length), from: String(block.start + 1), to: String(block.end + 1) })),
           createElement('span', { className: 'dsh-gd-spacer', style: { flex: 1 } }),
           createElement(
             'button',
@@ -641,10 +639,11 @@ function renderConflicts(
               style: { padding: '3px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 },
               onClick: () => {
                 setWorking(applyResolution(working, block, 'ours'))
-                setNote({ text: `已采用当前更改 (行 ${block.start + 1})`, kind: 'ok' })
+                setNote({ text: t('diff.tookOurs', { line: String(block.start + 1) }), kind: 'ok' })
               },
             },
-            '✔ 采用当前更改 (HEAD)',
+            icon('check', 13),
+            t('diff.takeOurs'),
           ),
           createElement(
             'button',
@@ -654,10 +653,11 @@ function renderConflicts(
               style: { padding: '3px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 },
               onClick: () => {
                 setWorking(applyResolution(working, block, 'theirs'))
-                setNote({ text: `已采用传入更改 (${block.label})`, kind: 'ok' })
+                setNote({ text: t('diff.tookTheirs', { label: block.label }), kind: 'ok' })
               },
             },
-            `✔ 采用传入更改 (${block.label})`,
+            icon('check', 13),
+            t('diff.takeTheirs', { label: block.label }),
           ),
           createElement(
             'button',
@@ -667,10 +667,11 @@ function renderConflicts(
               style: { padding: '3px 8px', fontSize: 11, cursor: 'pointer' },
               onClick: () => {
                 setWorking(applyResolution(working, block, 'both'))
-                setNote({ text: '已保留双方更改', kind: 'ok' })
+                setNote({ text: t('diff.tookBoth'), kind: 'ok' })
               },
             },
-            '✔ 两者都保留',
+            icon('both', 13),
+            t('diff.takeBoth'),
           ),
         ),
         createElement(
@@ -679,14 +680,14 @@ function renderConflicts(
           createElement(
             'div',
             { style: { padding: '8px 10px', background: 'rgba(59, 130, 246, 0.08)' } },
-            createElement('div', { style: { fontSize: 10.5, color: 'var(--accent, #3b82f6)', marginBottom: 4, fontWeight: 600 } }, 'HEAD / 当前分支:'),
-            createElement('pre', { style: { margin: 0, fontSize: 12, fontFamily: 'ui-monospace, monospace', whiteSpace: 'pre-wrap' } }, block.ours || '（空）'),
+            createElement('div', { style: { fontSize: 10.5, color: 'var(--accent, #3b82f6)', marginBottom: 4, fontWeight: 600 } }, t('diff.oursLabel')),
+            createElement('pre', { style: { margin: 0, fontSize: 12, fontFamily: 'ui-monospace, monospace', whiteSpace: 'pre-wrap' } }, block.ours || t('diff.empty')),
           ),
           createElement(
             'div',
             { style: { padding: '8px 10px', background: 'rgba(34, 197, 94, 0.08)' } },
-            createElement('div', { style: { fontSize: 10.5, color: 'var(--current, #22c55e)', marginBottom: 4, fontWeight: 600 } }, `传入 / ${block.label}:`),
-            createElement('pre', { style: { margin: 0, fontSize: 12, fontFamily: 'ui-monospace, monospace', whiteSpace: 'pre-wrap' } }, block.theirs || '（空）'),
+            createElement('div', { style: { fontSize: 10.5, color: 'var(--current, #22c55e)', marginBottom: 4, fontWeight: 600 } }, t('diff.theirsLabel', { label: block.label })),
+            createElement('pre', { style: { margin: 0, fontSize: 12, fontFamily: 'ui-monospace, monospace', whiteSpace: 'pre-wrap' } }, block.theirs || t('diff.empty')),
           ),
         ),
       ),
@@ -733,13 +734,14 @@ function renderConflicts(
             cursor: 'pointer',
             textAlign: 'center',
           },
-          title: '点击展开剩余代码',
+          title: t('diff.expandRest'),
           onClick: () => {
             const el = document.getElementById('gap-body-after-last')
             if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'
           },
         },
-        `↕️ 已折叠下方第 ${fromLine}–${toLine} 行未冲突代码 (${remainingCount} 行)`,
+        icon('fold', 13),
+        t('diff.foldedBelow', { from: String(fromLine), to: String(toLine), count: String(remainingCount) }),
       ),
       createElement(
         'div',

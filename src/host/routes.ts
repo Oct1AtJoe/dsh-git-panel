@@ -196,6 +196,12 @@ function route(service: GitService) {
           json(res, value.ok ? { ok: true, value } : { ok: false, error: value.error ?? BAD_REQUEST })
           return
         }
+        case '/git-panel/cancel': {
+          // 中止当前在飞的 git 进程（面板「取消」按钮），不必干等 90 秒超时。
+          service.runner?.cancel?.()
+          json(res, { ok: true, value: { cancelled: true } })
+          return
+        }
         case '/git-panel/set-credential': {
           const host = field(payload, 'host')
           const username = field(payload, 'username')
@@ -213,23 +219,18 @@ function route(service: GitService) {
             const encodedPass = encodeURIComponent(password)
 
             let currentContent = existsSync(credPath) ? readFileSync(credPath, 'utf8') : ''
-            const lines = currentContent.split('\n').filter((l) => !l.includes(`@${host}`))
+            const lines = currentContent.split('\n').filter((l) => l.includes(`@${host}`) === false)
             lines.push(`https://${encodedUser}:${encodedPass}@${host}`)
-            writeFileSync(credPath, lines.join('\n').trim() + '\n', 'utf8')
+            // 0600：凭据文件只允许本人读写。
+            writeFileSync(credPath, lines.join('\n').trim() + '\n', { encoding: 'utf8', mode: 0o600 })
 
-            // 终极杀招：直接将已认证的 URL 写入当前工程的 origin，彻底绕过 GCM 的任何 OAuth 拦截
-            const remotes = await service.runner.run(['remote', 'get-url', 'origin'], root)
-            if (remotes.exitCode === 0 && remotes.stdout.trim().startsWith('http')) {
-              const uObj = new URL(remotes.stdout.trim())
-              uObj.username = encodedUser
-              uObj.password = encodedPass
-              await service.runner.run(['remote', 'set-url', 'origin', uObj.toString()], root)
-            }
-
-            // 自动关闭该域名的 GCM OAuth 劫持，无缝直连
+            // 刻意**不**把密码写进 .git/config 的 origin URL：
+            // 那样会让 `git remote -v`、编辑器与任何读配置的进程都看到明文密码。
+            // 运行时由 runner 以 `-c credential.helper=store --file=<credPath>` 注入，
+            // 并在同一条命令里清空继承的助手链，既不碰钥匙串也不落盘到仓库配置。
             await service.runner.run(['config', '--global', `credential.https://${host}.provider`, 'generic'], root)
-            await service.runner.run(['config', '--global', `credential.https://${host}.helper`, 'store'], root)
             await service.runner.run(['config', '--global', `credential.https://${host}.modalPrompt`, 'false'], root)
+            await service.runner.run(['config', '--global', '--replace-all', `credential.https://${host}.helper`, 'store'], root)
 
             json(res, { ok: true, value: '凭据已安全绑定至当前仓库！' })
           } catch (e: any) {
