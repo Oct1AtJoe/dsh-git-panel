@@ -5,25 +5,27 @@
 <title>dsh-git-panel preview</title>
 <style>
   body { margin:0; padding:0; background:#ffffff; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif; }
-  body[data-view="chip"] #section-chip { display:block; }
-  body[data-view="panel"] #section-panel { display:block; }
-  body[data-view="graph"] #section-graph { display:block; }
-  body[data-view="sidebar"] #section-sidebar { display:block; }
-  #section-chip, #section-panel, #section-graph, #section-sidebar { display:none; }
+  body[data-view="chip"]     #section-chip     { display:block; }
+  body[data-view="panel"]    #section-panel    { display:block; }
+  body[data-view="graph"]    #section-graph    { display:block; }
+  body[data-view="sidebar"]  #section-sidebar  { display:block; }
+  body[data-view="conflict"] #section-conflict { display:block; }
+  body[data-view="diff"] #section-diff { display:block; }
+  body[data-view="tree"] #section-tree { display:block; }
+  #section-chip, #section-panel, #section-graph, #section-sidebar, #section-conflict, #section-diff, #section-tree { display:none; }
+  svg { display:block; }
 
-  /* ===== 分支胶囊（与 BranchChip.tsx 同款样式） ===== */
+  /* ===== 分支胶囊 ===== */
   #section-chip { width:560px; padding:18px 16px 12px; }
   .chip-dock { display:flex; justify-content:flex-start; }
   .dsh-gpc-chip { display:inline-flex; align-items:center; gap:5px; max-width:220px;
     padding:3px 10px; font-size:12px; color:#24292f; background:#ffffff;
-    border:1px solid rgba(128,128,128,0.35); border-radius:999px; cursor:pointer;
-    white-space:nowrap; overflow:hidden; }
+    border:1px solid rgba(128,128,128,0.35); border-radius:999px; white-space:nowrap; overflow:hidden; }
   .dsh-gpc-chip .label { overflow:hidden; text-overflow:ellipsis; }
-  .dsh-gpc-chip svg { flex:none; }
   .composer-box { margin-top:8px; border:1px solid rgba(128,128,128,0.3); border-radius:10px;
     height:44px; display:flex; align-items:center; padding:0 12px; color:#8b949e; font-size:13px; }
 
-  /* ===== 分支面板（与 Panel.tsx 同款样式） ===== */
+  /* ===== 分支面板（与 Panel.tsx 同款样式 + 统一图标） ===== */
   #section-panel { width:380px; }
   .dsh-gp { --bg:#ffffff; --fg:#24292f; --muted:#6e7781; --border:rgba(128,128,128,0.25);
     --accent:#1976d2; --hover:rgba(0,0,0,0.05); --current:#1a7f37; --danger:#cf222e;
@@ -34,48 +36,118 @@
     border-bottom:1px solid var(--border); font-weight:600; }
   .dsh-gp-head .repo { color:var(--muted); font-weight:400; font-size:11px; }
   .dsh-gp-head .spacer { flex:1; }
-  .dsh-gp-btn { border:1px solid var(--border); background:transparent; color:var(--fg);
-    border-radius:4px; padding:2px 8px; font-size:11px; cursor:pointer; }
+  .dsh-gp-btn { display:inline-flex; align-items:center; border:1px solid var(--border);
+    background:transparent; color:var(--fg); border-radius:4px; padding:2px 8px; font-size:11px; }
   .dsh-gp-tabs { display:flex; border-bottom:1px solid var(--border); }
-  .dsh-gp-tab { flex:1; text-align:center; padding:6px 0; cursor:pointer; color:var(--muted); }
+  .dsh-gp-tab { flex:1; text-align:center; padding:6px 0; color:var(--muted); }
   .dsh-gp-tab.active { color:var(--accent); border-bottom:2px solid var(--accent); font-weight:600; }
+  .dsh-gp-body { padding:4px 0; }
+  .dsh-gp-branch-search { width:calc(100% - 16px); margin:4px 8px; padding:4px 8px; font-size:12px;
+    color:var(--fg); background:var(--panel-bg); border:1px solid var(--border); border-radius:6px; }
   .dsh-gp-section { padding:8px 10px 4px; color:var(--muted); font-size:12px; font-weight:600;
-    text-transform:uppercase; letter-spacing:0.4px; }
-  .dsh-gp-row { display:flex; align-items:center; gap:6px; padding:7px 10px; cursor:pointer; }
-  .dsh-gp-row:hover { background:var(--hover); }
-  .dsh-gp-row .name { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .dsh-gp-row .meta { color:var(--muted); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .dsh-gp-row .spacer { flex:1; }
-  .dsh-gp-badge { font-size:11px; padding:1px 6px; border-radius:8px; background:var(--panel-bg); color:var(--muted); white-space:nowrap; }
+    text-transform:uppercase; letter-spacing:.4px; }
+  .dsh-gp-row { display:flex; flex-direction:column; gap:2px; padding:6px 10px;
+    border-radius:6px; margin:1px 4px; }
+  .dsh-gp-row-top { display:flex; align-items:center; gap:6px; min-width:0; }
+  .dsh-gp-row-top .name { font-weight:600; font-size:12.5px; white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis; flex:1; min-width:0; }
+  .dsh-gp-row-top .badges { display:flex; align-items:center; gap:4px; flex:none; }
+  .dsh-gp-row-bottom { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); }
+  .dsh-gp-row-bottom .commit-msg { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; }
+  .dsh-gp-row-bottom .commit-date { flex:none; opacity:.85; }
+  .dsh-gp-badge { display:inline-flex; align-items:center; gap:2px; font-size:11px; padding:1px 6px;
+    border-radius:8px; background:var(--panel-bg); color:var(--muted); white-space:nowrap; }
   .dsh-gp-badge.current { background:var(--current); color:#fff; }
   .dsh-gp-badge.ahead { color:var(--current); }
   .dsh-gp-badge.behind { color:var(--accent); }
-  .dsh-gp-actions { padding:8px; }
+  .dsh-gp-write { padding:6px 8px; display:flex; flex-direction:column; gap:6px;
+    border-top:1px solid var(--border); }
+  .dsh-gp-write-row { display:flex; gap:4px; align-items:center; }
+  .dsh-gp-input { flex:1; min-width:0; padding:3px 7px; font-size:12px; color:var(--fg);
+    background:var(--panel-bg); border:1px solid var(--border); border-radius:5px; }
+  .dsh-gp-changes-group-head { font-size:10.5px; color:var(--muted); font-weight:600; padding:2px 4px; }
+  .dsh-gp-changes-item { display:flex; align-items:center; gap:4px; padding:3px 6px; border-radius:5px; font-size:11px; }
+  .dsh-gp-changes-code { flex:none; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:10px; color:var(--current); width:20px; font-weight:600; }
+  .dsh-gp-changes-code.conflict { color:var(--danger); }
+  .dsh-gp-changes-file { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .dsh-gp-act { display:inline-flex; align-items:center; justify-content:center; width:22px; height:20px;
+    border:1px solid transparent; background:transparent; color:var(--muted); border-radius:5px; }
 
-  /* ===== 图谱（与 Panel.tsx 同款样式） ===== */
-  #section-graph { width:680px; padding:8px; }
-  .graph-wrap { position:relative; }
-  .graph-header { position:relative; width:652px; height:28px; font-size:13px; color:var(--muted); user-select:none; }
-  .graph-header span { position:absolute; top:8px; font-weight:600; }
-  .graph-sep { position:absolute; top:6px; bottom:6px; width:1px; background:rgba(128,128,128,0.25); opacity:0.7; }
+  /* ===== 提交图谱 ===== */
+  #section-graph { width:520px; }
+  .graph-header { display:flex; font-size:11px; color:#6e7781; padding:6px 8px;
+    border-bottom:1px solid rgba(128,128,128,0.25); font-weight:600; }
+  .graph-header .c1 { width:44px; } .graph-header .c2 { flex:1; } .graph-header .c3 { width:96px; }
+  .graph-row { display:flex; align-items:center; font-size:11.5px; padding:3px 0; color:#24292f; }
+  .graph-row .lanes { width:44px; flex:none; }
+  .graph-row .msg { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .graph-row .branch { width:96px; flex:none; color:#6e7781; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .graph-sep { border-top:1px solid rgba(128,128,128,0.15); }
 
-  /* ===== 官方右侧栏 Tab 承载（示意外壳，非插件自带样式） ===== */
-  #section-sidebar { width:900px; padding:16px; }
-  .sbx-window { display:flex; height:520px; border:1px solid rgba(128,128,128,0.28);
-    border-radius:12px; overflow:hidden; background:#ffffff; }
-  .sbx-chat { flex:1; min-width:0; background:#fafbfc; border-right:1px solid rgba(128,128,128,0.2);
-    padding:14px 18px; color:#8b949e; font-size:13px; }
-  .sbx-chat .bubble { background:#ffffff; border:1px solid rgba(128,128,128,0.22); border-radius:10px;
-    padding:10px 12px; margin-bottom:10px; color:#57606a; }
-  .sbx-side { width:392px; flex:none; display:flex; flex-direction:column; background:#ffffff; }
-  .sbx-tabs { display:flex; align-items:center; gap:2px; padding:6px 8px 0;
-    border-bottom:1px solid rgba(128,128,128,0.22); }
-  .sbx-tab { display:flex; align-items:center; gap:6px; padding:6px 10px; font-size:12px;
-    color:#57606a; border-radius:8px 8px 0 0; white-space:nowrap; }
-  .sbx-tab.active { color:#24292f; background:#f2f4f7; font-weight:600; }
-  .sbx-tab .x { color:#8b949e; font-size:11px; }
-  .sbx-add { color:#8b949e; padding:6px 9px; font-size:14px; }
-  .sbx-body { flex:1; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
+  /* ===== 右侧栏标签 ===== */
+  #section-sidebar { width:300px; }
+  .sbx-wrap { display:flex; border:1px solid rgba(128,128,128,0.25); border-radius:10px; overflow:hidden; }
+  .sbx-tabs { width:44px; flex:none; background:#f6f8fa; border-right:1px solid rgba(128,128,128,0.25);
+    display:flex; flex-direction:column; align-items:center; gap:4px; padding:6px 0; }
+  .sbx-tab { width:30px; height:26px; border-radius:6px; display:flex; align-items:center; justify-content:center;
+    color:#6e7781; font-size:10px; }
+  .sbx-tab.active { background:#ffffff; color:#1976d2; box-shadow:0 0 0 1px rgba(128,128,128,0.2); }
+  .sbx-body { flex:1; min-width:0; }
+  .sbx-head { display:flex; align-items:center; justify-content:space-between; padding:6px 8px;
+    border-bottom:1px solid rgba(128,128,128,0.2); font-size:12px; font-weight:600; }
+  .sbx-add { font-size:11px; color:#6e7781; }
+  .sbx-chat { padding:8px; font-size:12px; color:#6e7781; }
+
+  /* ===== 合并冲突解决（数据全部虚构） ===== */
+  #section-conflict { width:560px; }
+  .gd-head { padding:8px 10px; border-bottom:1px solid rgba(128,128,128,0.25); }
+  .gd-title-row { display:flex; align-items:center; gap:8px; }
+  .gd-tag { font-size:11px; padding:1px 6px; border-radius:8px; background:#cf222e; color:#fff; font-weight:600; }
+  .gd-path { flex:1; font-size:12px; color:#6e7781; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .gd-actions { display:flex; gap:4px; margin-top:6px; }
+  .gd-btn { display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 8px;
+    border:1px solid rgba(128,128,128,0.3); border-radius:5px; color:#24292f; background:#fff; }
+  .gd-btn.primary { color:#fff; background:#1976d2; border-color:#1976d2; }
+  .gd-hint { margin:8px 10px; padding:6px 8px; font-size:11.5px; color:#6e7781;
+    background:rgba(128,128,128,0.1); border-radius:6px; }
+  .gd-code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; line-height:1.6;
+    padding:6px 0; background:#fff; }
+  .gd-line { display:flex; padding:0 10px; white-space:pre; }
+  .gd-num { width:34px; flex:none; text-align:right; color:#8b949e; opacity:.7; margin-right:10px;
+    user-select:none; }
+  .gd-conflict { margin:6px 10px; border:1px solid #cf222e; border-radius:8px; overflow:hidden; }
+  .gd-conflict-head { padding:4px 8px; background:rgba(207,34,46,0.08); font-size:11.5px;
+    font-weight:600; color:#cf222e; display:flex; align-items:center; gap:5px; }
+  .gd-conflict-actions { display:flex; gap:6px; padding:6px 8px; border-bottom:1px solid rgba(128,128,128,0.2); }
+  .gd-panes { display:flex; }
+  .gd-pane { flex:1; min-width:0; padding:6px 8px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:11.5px; white-space:pre; }
+  .gd-pane.ours { background:rgba(59,130,246,0.06); }
+  .gd-pane.theirs { background:rgba(34,197,94,0.06); border-left:1px solid rgba(128,128,128,0.2); }
+  .gd-fold { display:flex; align-items:center; gap:5px; margin:4px 10px; padding:3px 8px;
+    font-size:11px; color:#1976d2; background:rgba(25,118,210,0.06); border-radius:6px; }
+  /* ===== 双栏 Diff（虚构示例） ===== */
+  #section-diff { width:760px; }
+  .df-panes { display:flex; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; line-height:1.6; }
+  .df-pane { flex:1; min-width:0; }
+  .df-pane.right { border-left:1px solid rgba(128,128,128,0.2); }
+  .df-line { display:flex; white-space:pre; padding:0 6px; }
+  .df-num { width:30px; flex:none; text-align:right; color:#8b949e; opacity:.7; margin-right:8px; user-select:none; }
+  .df-sign { width:12px; flex:none; opacity:.75; }
+  .df-del { background:rgba(207,34,46,0.10); }
+  .df-add { background:rgba(34,197,94,0.10); }
+  .df-hunk { background:rgba(25,118,210,0.10); color:#1976d2; }
+  /* ===== 文件树改动标记（虚构示例） ===== */
+  #section-tree { width:320px; padding:8px; }
+  .ft-title { font-size:11px; color:#6e7781; font-weight:600; padding:2px 4px 6px; }
+  .ft-item { display:flex; align-items:center; gap:5px; font-size:12px; padding:2px 6px; border-radius:4px; }
+  .ft-caret { width:10px; flex:none; color:#8b949e; }
+  .ft-name { white-space:nowrap; }
+  .ft-badge { margin-left:4px; font-size:10px; font-weight:700; font-family:ui-monospace,Menlo,monospace; }
+  .ft-m { color:#e2c08d; } .ft-a { color:#73c991; } .ft-d { color:#c74e39; } .ft-u { color:#73c991; }
+  .ft-dot { width:5px; height:5px; border-radius:50%; background:#9198a1; margin-left:auto; flex:none; }
+  .ft-indent { padding-left:18px; }
 </style>
 </head>
 <body data-view="chip">
@@ -88,257 +160,342 @@
   <div class="chip-dock">
     <button type="button" class="dsh-gpc-chip" title="切换分支">
       <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
-        strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <circle cx="4" cy="4" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="12" cy="4" r="1.6" />
-        <path d="M4 5.6v4.8a2.4 2.4 0 0 0 2.4 2.4H12" />
+        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="4.6" cy="4" r="1.6" /><circle cx="4.6" cy="12" r="1.6" /><circle cx="11.4" cy="6.4" r="1.6" />
+        <path d="M4.6 5.6v4.8M11.4 8c0 2.2-2 3.2-4.6 3.4" />
       </svg>
       <span class="label">main</span>
-      <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor"
-        strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M4 6l4 4 4-4" />
+      <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor"
+        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4.6 6.6L8 3.2l3.4 3.4" />
       </svg>
     </button>
   </div>
   <div class="composer-box">输入消息，或使用 @ 引用…</div>
 </section>
 
-<!-- ================= 分支面板 ================= -->
+<!-- ================= 分支面板（虚构示例仓库 example-shop） ================= -->
 <section id="section-panel">
   <div class="dsh-gp">
     <div class="dsh-gp-head">
       <span>Git 面板</span>
-      <span class="repo">dsh-git-panel</span>
+      <span class="repo">example-shop</span>
       <span class="spacer"></span>
-      <button class="dsh-gp-btn">↻</button>
+      <button class="dsh-gp-btn" title="刷新">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+          stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M13.2 8a5.2 5.2 0 1 1-1.5-3.7" /><path d="M13.4 2.6v2.9h-2.9" />
+        </svg>
+      </button>
     </div>
     <div class="dsh-gp-tabs">
       <div class="dsh-gp-tab active">分支</div>
       <div class="dsh-gp-tab">图谱</div>
     </div>
+    <input class="dsh-gp-branch-search" value="" placeholder="搜索分支或提交信息…" />
+    <div class="dsh-gp-body">
+      <div class="dsh-gp-section">本地分支 (4)</div>
 
-    <!-- 写操作与变更摘要 -->
-    <div style="padding:6px 10px; border-bottom:1px solid var(--border); background:var(--panel-bg);">
-      <div style="display:flex; gap:6px; margin-bottom:6px;">
-        <input style="flex:1; padding:3px 6px; font-size:11px; border:1px solid var(--border); border-radius:4px;" placeholder="提交信息…" value="feat(login): remember device" />
+      <div class="dsh-gp-row">
+        <div class="dsh-gp-row-top">
+          <span class="name">main</span>
+          <span class="badges"><span class="dsh-gp-badge current">当前</span></span>
+        </div>
+        <div class="dsh-gp-row-bottom">
+          <span class="commit-msg">chore: 初始化示例仓库</span>
+          <span class="commit-date">03-14 09:20</span>
+        </div>
+      </div>
+
+      <div class="dsh-gp-row">
+        <div class="dsh-gp-row-top">
+          <span class="name">feature/cart-coupon</span>
+          <span class="badges">
+            <span class="dsh-gp-badge ahead">
+              <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor"
+                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M8 12.8V3.2M4.6 6.6L8 3.2l3.4 3.4" />
+              </svg>2
+            </span>
+          </span>
+        </div>
+        <div class="dsh-gp-row-bottom">
+          <span class="commit-msg">feat: 购物车支持优惠券叠加</span>
+          <span class="commit-date">03-18 14:05</span>
+        </div>
+      </div>
+
+      <div class="dsh-gp-row">
+        <div class="dsh-gp-row-top">
+          <span class="name">feature/search-filter</span>
+          <span class="badges">
+            <span class="dsh-gp-badge behind">
+              <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor"
+                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M8 3.2v9.6M4.6 9.4L8 12.8l3.4-3.4" />
+              </svg>5
+            </span>
+          </span>
+        </div>
+        <div class="dsh-gp-row-bottom">
+          <span class="commit-msg">feat: 搜索结果增加价格区间筛选</span>
+          <span class="commit-date">03-17 11:42</span>
+        </div>
+      </div>
+
+      <div class="dsh-gp-row">
+        <div class="dsh-gp-row-top"><span class="name">fix/login-redirect</span></div>
+        <div class="dsh-gp-row-bottom">
+          <span class="commit-msg">fix: 修复登录后跳转回原页面</span>
+          <span class="commit-date">03-16 17:30</span>
+        </div>
+      </div>
+
+      <div class="dsh-gp-section">远程分支 (2)</div>
+      <div class="dsh-gp-row">
+        <div class="dsh-gp-row-top"><span class="name">origin/main</span></div>
+        <div class="dsh-gp-row-bottom"><span class="commit-msg">chore: 初始化示例仓库</span></div>
+      </div>
+      <div class="dsh-gp-row">
+        <div class="dsh-gp-row-top"><span class="name">origin/release-1.0</span></div>
+        <div class="dsh-gp-row-bottom"><span class="commit-msg">release: 1.0.0</span></div>
+      </div>
+    </div>
+
+    <div class="dsh-gp-write">
+      <div class="dsh-gp-write-row">
+        <input class="dsh-gp-input" value="feat: 新增结算页地址自动填充" />
         <button class="dsh-gp-btn">提交</button>
         <button class="dsh-gp-btn">推送</button>
+        <button class="dsh-gp-btn">同步</button>
       </div>
-      <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--muted); padding-top:2px;">
-        <span>变更文件 (2)</span>
-        <button class="dsh-gp-btn" style="font-size:11px;">💬 将改动带入对话输入框</button>
+      <div class="dsh-gp-write-row">
+        <button class="dsh-gp-btn">暂存</button>
+        <button class="dsh-gp-btn">恢复暂存</button>
+        <button class="dsh-gp-btn">状态</button>
       </div>
-    </div>
-
-    <div class="dsh-gp-section">本地分支</div>
-    <div class="dsh-gp-row">
-      <span class="name">main</span>
-      <span class="dsh-gp-badge behind">↓1</span>
-      <span class="dsh-gp-badge current">当前</span>
-      <span class="spacer"></span>
-      <span class="meta">08-12 21:34 Merge pull request #131</span>
-    </div>
-    <div class="dsh-gp-row">
-      <span class="name">feature/login</span>
-      <span class="dsh-gp-badge ahead">↑2</span>
-      <span class="spacer"></span>
-      <span class="meta">08-13 09:12 feat(login): add SSO provider</span>
-    </div>
-    <div class="dsh-gp-row">
-      <span class="name">feature/payments</span>
-      <span class="spacer"></span>
-      <span class="meta">08-11 16:40 wip: refund flow</span>
-    </div>
-    <div class="dsh-gp-row">
-      <span class="name">hotfix/2fa</span>
-      <span class="spacer"></span>
-      <span class="meta">08-13 10:05 hotfix: validate 2FA code</span>
-    </div>
-    <div class="dsh-gp-row">
-      <span class="name">refactor/api</span>
-      <span class="spacer"></span>
-      <span class="meta">08-10 14:22 refactor(api): extract client</span>
-    </div>
-
-    <div class="dsh-gp-section">远程分支</div>
-    <div class="dsh-gp-row">
-      <span class="name">origin/main</span>
-      <span class="spacer"></span>
-      <span class="meta">08-12 21:34 Merge pull request #131</span>
-    </div>
-    <div class="dsh-gp-row">
-      <span class="name">origin/feature/login</span>
-      <span class="spacer"></span>
-      <span class="meta">08-13 09:12 feat(login): add SSO provider</span>
-    </div>
-    <div class="dsh-gp-row">
-      <span class="name">origin/hotfix/2fa</span>
-      <span class="spacer"></span>
-      <span class="meta">08-13 10:05 hotfix: validate 2FA code</span>
-    </div>
-
-    <div class="dsh-gp-actions">
-      <button class="dsh-gp-btn">全部抓取</button>
+      <div>
+        <div class="dsh-gp-changes-group-head">修改 (2)</div>
+        <div class="dsh-gp-changes-item">
+          <span class="dsh-gp-changes-code">M</span>
+          <span class="dsh-gp-changes-file">src/pages/checkout/AddressForm.tsx</span>
+          <button class="dsh-gp-act" title="复制相对路径">
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="5.4" y="5.4" width="8.2" height="8.2" rx="1.5" />
+              <path d="M10.6 3.6V3A1.4 1.4 0 0 0 9.2 1.6H3.6A1.4 1.4 0 0 0 2.2 3v5.6a1.4 1.4 0 0 0 1.4 1.4h.4" />
+            </svg>
+          </button>
+          <button class="dsh-gp-act" title="向 Agent 提问此文件">
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M13.4 9.4a2.4 2.4 0 0 1-2.4 2.4H6.2L2.6 14.4V4.6a2.4 2.4 0 0 1 2.4-2.4h6a2.4 2.4 0 0 1 2.4 2.4z" />
+            </svg>
+          </button>
+          <button class="dsh-gp-act" title="暂存此文件">
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M8 3.2v9.6M3.2 8h9.6" />
+            </svg>
+          </button>
+          <button class="dsh-gp-act" title="放弃更改">
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3.2 8h7a2.8 2.8 0 0 1 0 5.6H7.4" /><path d="M3.2 8l2.8-2.8M3.2 8l2.8 2.8" />
+            </svg>
+          </button>
+        </div>
+        <div class="dsh-gp-changes-item">
+          <span class="dsh-gp-changes-code">M</span>
+          <span class="dsh-gp-changes-file">src/hooks/useAddressSuggest.ts</span>
+        </div>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- ================= 图谱 ================= -->
+<!-- ================= 提交图谱 ================= -->
 <section id="section-graph">
-  <div class="graph-wrap" style="width:652px">
-    <div class="graph-header">
-      <span style="left:10px">线图</span>
-      <div class="graph-sep" style="left:73px"></div>
-      <span style="left:80px">提交</span>
-      <div class="graph-sep" style="left:383px"></div>
-      <span style="left:404px">分支</span>
+  <div class="graph-header"><span class="c1">线图</span><span class="c2">提交</span><span class="c3">分支</span></div>
+  <div class="graph-row"><span class="lanes">●</span><span class="msg">chore: 初始化示例仓库</span><span class="branch">main</span></div>
+  <div class="graph-row"><span class="lanes">│</span><span class="msg">feat: 商品列表页骨架</span><span class="branch">main</span></div>
+  <div class="graph-row"><span class="lanes">├─●</span><span class="msg">feat: 购物车支持优惠券叠加</span><span class="branch">feature/cart-coupon</span></div>
+  <div class="graph-row"><span class="lanes">│ │</span><span class="msg">test: 补充优惠券计算单测</span><span class="branch">feature/cart-coupon</span></div>
+  <div class="graph-row graph-sep"><span class="lanes">●</span><span class="msg">fix: 修复登录后跳转回原页面</span><span class="branch">fix/login-redirect</span></div>
+  <div class="graph-row"><span class="lanes">│</span><span class="msg">docs: 补充说明文档</span><span class="branch">main</span></div>
+  <div class="graph-row"><span class="lanes">●</span><span class="msg">release: 1.0.0</span><span class="branch">release-1.0</span></div>
+</section>
+
+<!-- ================= 右侧栏标签 ================= -->
+<section id="section-sidebar">
+  <div class="sbx-wrap">
+    <div class="sbx-tabs">
+      <div class="sbx-tab">文件</div>
+      <div class="sbx-tab active">Git</div>
+      <div class="sbx-tab">+</div>
     </div>
-    <svg width="652" height="270" style="display:block">
-      <!-- 泳道线条与节点：r0..r9, lane0..lane2 -->
-      <line x1="24" y1="38" x2="24" y2="14" stroke="#1565c0" stroke-width="1.2" opacity="0.85"/>
-      <path d="M 38 38 C 38 50, 24 50, 24 62" fill="none" stroke="#c62828" stroke-width="1.2" opacity="0.85"/>
-      <line x1="24" y1="62" x2="24" y2="86" stroke="#1565c0" stroke-width="1.2" opacity="0.85"/>
-      <line x1="38" y1="38" x2="38" y2="62" stroke="#c62828" stroke-width="1.2" opacity="0.85"/>
-      <path d="M 52 62 C 52 74, 24 74, 24 86" fill="none" stroke="#2e7d32" stroke-width="1.2" opacity="0.85"/>
-      <line x1="24" y1="86" x2="24" y2="110" stroke="#1565c0" stroke-width="1.2" opacity="0.85"/>
-      <line x1="38" y1="62" x2="38" y2="86" stroke="#c62828" stroke-width="1.2" opacity="0.85"/>
-      <line x1="24" y1="110" x2="24" y2="134" stroke="#1565c0" stroke-width="1.2" opacity="0.85"/>
-      <line x1="38" y1="86" x2="38" y2="110" stroke="#c62828" stroke-width="1.2" opacity="0.85"/>
-      <line x1="24" y1="134" x2="24" y2="158" stroke="#1565c0" stroke-width="1.2" opacity="0.85"/>
-      <line x1="38" y1="110" x2="38" y2="134" stroke="#c62828" stroke-width="1.2" opacity="0.85"/>
-      <line x1="24" y1="158" x2="24" y2="182" stroke="#1565c0" stroke-width="1.2" opacity="0.85"/>
-      <line x1="38" y1="134" x2="38" y2="158" stroke="#c62828" stroke-width="1.2" opacity="0.85"/>
-      <line x1="24" y1="182" x2="24" y2="206" stroke="#1565c0" stroke-width="1.2" opacity="0.85"/>
-      <line x1="38" y1="158" x2="38" y2="182" stroke="#c62828" stroke-width="1.2" opacity="0.85"/>
-      <line x1="24" y1="206" x2="24" y2="230" stroke="#1565c0" stroke-width="1.2" opacity="0.85"/>
-      <line x1="38" y1="182" x2="38" y2="206" stroke="#c62828" stroke-width="1.2" opacity="0.85"/>
-
-      <!-- 节点 -->
-      <circle cx="24" cy="14" r="4" fill="#1565c0" stroke="#ffffff" stroke-width="1.5"/>
-      <circle cx="24" cy="38" r="4" fill="#1565c0"/>
-      <circle cx="38" cy="38" r="4" fill="#c62828"/>
-      <circle cx="24" cy="62" r="4" fill="#1565c0"/>
-      <circle cx="38" cy="62" r="4" fill="#c62828"/>
-      <circle cx="52" cy="62" r="4" fill="#2e7d32"/>
-      <circle cx="24" cy="86" r="4" fill="#1565c0"/>
-      <circle cx="38" cy="86" r="4" fill="#c62828"/>
-      <circle cx="24" cy="110" r="4" fill="#1565c0"/>
-      <circle cx="38" cy="110" r="4" fill="#c62828"/>
-      <circle cx="24" cy="134" r="4" fill="#1565c0"/>
-      <circle cx="38" cy="134" r="4" fill="#c62828"/>
-      <circle cx="24" cy="158" r="4" fill="#1565c0"/>
-      <circle cx="38" cy="158" r="4" fill="#c62828"/>
-      <circle cx="24" cy="182" r="4" fill="#1565c0"/>
-      <circle cx="38" cy="182" r="4" fill="#c62828"/>
-      <circle cx="24" cy="206" r="4" fill="#1565c0"/>
-      <circle cx="38" cy="206" r="4" fill="#c62828"/>
-      <circle cx="24" cy="230" r="4" fill="#1565c0"/>
-      <circle cx="38" cy="230" r="4" fill="#c62828"/>
-
-      <!-- 提交文本 -->
-      <text x="80" y="17.5" font-size="12" fill="#24292f">Merge pull request #131 from feature/login</text>
-      <text x="80" y="41.5" font-size="12" fill="#24292f">docs: update API examples</text>
-      <text x="80" y="65.5" font-size="12" fill="#24292f">feat(login): add SSO provider adapter (#129)</text>
-      <text x="80" y="89.5" font-size="12" fill="#24292f">fix(ui): align table headers on narrow screens</text>
-      <text x="80" y="113.5" font-size="12" fill="#24292f">feat(login): remember device checkbox (#127)</text>
-      <text x="80" y="137.5" font-size="12" fill="#24292f">hotfix: validate 2FA code length before submit</text>
-      <text x="80" y="161.5" font-size="12" fill="#24292f">refactor(api): extract client factory</text>
-      <text x="80" y="185.5" font-size="12" fill="#24292f">feat(login): password reset flow (#124)</text>
-      <text x="80" y="209.5" font-size="12" fill="#24292f">chore: pin node 20 in CI</text>
-      <text x="80" y="233.5" font-size="12" fill="#24292f">feat(auth): session refresh interceptor</text>
-
-      <!-- 分支标签（右对齐） -->
-      <text x="648" y="17.5" font-size="11" text-anchor="end" font-weight="700" fill="#1a7f37">main</text>
-      <text x="648" y="65.5" font-size="11" text-anchor="end" fill="#6e7781">feature/login</text>
-      <text x="648" y="137.5" font-size="11" text-anchor="end" fill="#6e7781">hotfix/2fa</text>
-      <text x="648" y="209.5" font-size="11" text-anchor="end" fill="#6e7781">origin/main</text>
-    </svg>
+    <div class="sbx-body">
+      <div class="sbx-head"><span>Git 面板</span><span class="sbx-add">添加</span></div>
+      <div class="sbx-chat">切换分支、查看图谱、处理冲突…</div>
+    </div>
   </div>
 </section>
 
-<!-- ================= 官方右侧栏中的 Git Tab ================= -->
-<section id="section-sidebar">
-  <div class="sbx-window">
-    <div class="sbx-chat">
-      <div class="bubble">帮我看下当前分支有哪些未提交的改动</div>
-      <div class="bubble">当前在 <b>main</b> 分支，有 2 个文件被修改：remember-device 相关逻辑已改完，单测还没补。</div>
-      <div class="bubble">把改动整理成一条规范提交</div>
+<!-- ================= 合并冲突解决（数据全部虚构） ================= -->
+<section id="section-conflict">
+  <div class="gd-head">
+    <div class="gd-title-row">
+      <span class="gd-tag">C</span>
+      <span class="gd-path">src/utils/pricing/calculateTax.ts</span>
     </div>
-
-    <div class="sbx-side">
-      <!-- 官方右侧栏的标签条：Git 与「文件」并列 -->
-      <div class="sbx-tabs">
-        <div class="sbx-tab">
-          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
-            strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h3l1.5 2h4.5A1.5 1.5 0 0 1 14 6.5v5A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5z" />
-          </svg>
-          文件 <span class="x">✕</span>
-        </div>
-        <div class="sbx-tab active">
-          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
-            strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="4" cy="4" r="2" /><circle cx="4" cy="12" r="2" /><circle cx="12" cy="8" r="2" />
-            <path d="M4 6v4M4 8h5a3 3 0 0 1 3 3" />
-          </svg>
-          Git <span class="x">✕</span>
-        </div>
-        <div class="sbx-add">+</div>
-      </div>
-
-      <!-- Git 面板本体 -->
-      <div class="sbx-body">
-        <div class="dsh-gp" style="flex:1; min-height:0;">
-          <div class="dsh-gp-head">
-            <span>Git 面板</span>
-            <span class="repo">dsh-git-panel</span>
-            <span class="spacer"></span>
-            <button class="dsh-gp-btn">↻</button>
-          </div>
-          <div class="dsh-gp-tabs">
-            <div class="dsh-gp-tab active">分支</div>
-            <div class="dsh-gp-tab">图谱</div>
-          </div>
-
-          <div style="padding:6px 10px; border-bottom:1px solid var(--border); background:var(--panel-bg);">
-            <div style="display:flex; gap:6px; margin-bottom:6px;">
-              <input style="flex:1; padding:3px 6px; font-size:11px; border:1px solid var(--border); border-radius:4px;" placeholder="提交信息…" value="feat(login): remember device" />
-              <button class="dsh-gp-btn">提交</button>
-              <button class="dsh-gp-btn">推送</button>
-            </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--muted); padding-top:2px;">
-              <span>变更文件 (2)</span>
-              <button class="dsh-gp-btn" style="font-size:11px;">💬 将改动带入对话输入框</button>
-            </div>
-          </div>
-
-          <div class="dsh-gp-section">本地分支</div>
-          <div class="dsh-gp-row">
-            <span class="name">main</span>
-            <span class="dsh-gp-badge behind">↓1</span>
-            <span class="dsh-gp-badge current">当前</span>
-            <span class="spacer"></span>
-            <span class="meta">08-12 21:34 Merge pull request #131</span>
-          </div>
-          <div class="dsh-gp-row">
-            <span class="name">feature/login</span>
-            <span class="dsh-gp-badge ahead">↑2</span>
-            <span class="spacer"></span>
-            <span class="meta">08-13 09:12 feat(login): add SSO provider</span>
-          </div>
-          <div class="dsh-gp-row">
-            <span class="name">hotfix/2fa</span>
-            <span class="spacer"></span>
-            <span class="meta">08-13 10:05 hotfix: validate 2FA code</span>
-          </div>
-          <div class="dsh-gp-row">
-            <span class="name">refactor/api</span>
-            <span class="spacer"></span>
-            <span class="meta">08-10 14:22 refactor(api): extract client</span>
-          </div>
-        </div>
-      </div>
+    <div class="gd-actions">
+      <button class="gd-btn">编辑</button>
+      <button class="gd-btn">官方预览</button>
+      <button class="gd-btn">+ 暂存</button>
+      <button class="gd-btn primary">已同步</button>
     </div>
   </div>
+
+  <div class="gd-hint">冲突核心与紧邻代码已直接置于首屏，逐块点击按钮合并冲突，处理完点击「保存」写回磁盘。</div>
+
+  <div class="gd-fold">
+    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M4.4 6.2L8 2.9l3.6 3.3M4.4 9.8L8 13.1l3.6-3.3" />
+    </svg>
+    已折叠上方第 1–84 行未冲突代码 (84 行)
+  </div>
+
+  <div class="gd-code">
+    <div class="gd-line"><span class="gd-num">85</span>export function calculateTax(amount: number, rate: number) {</div>
+    <div class="gd-line"><span class="gd-num">86</span>  if (amount &lt;= 0) return 0</div>
+    <div class="gd-line"><span class="gd-num">87</span></div>
+  </div>
+
+  <div class="gd-conflict">
+    <div class="gd-conflict-head">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M8 2.4l5.7 10.2H2.3z" /><path d="M8 6.4v3.1M8 11.4h.01" />
+      </svg>
+      冲突 1 / 1 · 行 88–94
+    </div>
+    <div class="gd-conflict-actions">
+      <button class="gd-btn">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+          stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3.4 8.4l3 3 6.2-6.8" />
+        </svg>采用当前更改 (HEAD)
+      </button>
+      <button class="gd-btn">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+          stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3.4 8.4l3 3 6.2-6.8" />
+        </svg>采用传入更改 (feature/vat-v2)
+      </button>
+      <button class="gd-btn">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+          stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 3.4h2.2a2.4 2.4 0 0 1 2.4 2.4v4.4a2.4 2.4 0 0 0 2.4 2.4H13" />
+          <path d="M4 12.6h2.2a2.4 2.4 0 0 0 2.4-2.4" />
+        </svg>两者都保留
+      </button>
+    </div>
+    <div class="gd-panes">
+      <div class="gd-pane ours">// 当前分支（HEAD）
+const tax = amount * rate
+const rounded = Math.round(tax * 100) / 100
+return rounded</div>
+      <div class="gd-pane theirs">// 传入分支（feature/vat-v2）
+const tax = amount * rate
+const withFee = tax + SERVICE_FEE
+return Math.ceil(withFee)</div>
+    </div>
+  </div>
+
+  <div class="gd-code">
+    <div class="gd-line"><span class="gd-num">95</span>}</div>
+    <div class="gd-line"><span class="gd-num">96</span></div>
+    <div class="gd-line"><span class="gd-num">97</span>export const SERVICE_FEE = 1.5</div>
+  </div>
+
+  <div class="gd-fold">
+    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M4.4 6.2L8 2.9l3.6 3.3M4.4 9.8L8 13.1l3.6-3.3" />
+    </svg>
+    已折叠下方第 98–142 行未冲突代码 (45 行)
+  </div>
+</section>
+
+<!-- ================= Git 对比视图（虚构示例） ================= -->
+<section id="section-diff">
+  <div class="gd-head">
+    <div class="gd-title-row">
+      <span class="gd-tag" style="background:#1976d2">M</span>
+      <span class="gd-path">src/pages/checkout/AddressForm.tsx</span>
+    </div>
+    <div class="gd-actions">
+      <button class="gd-btn">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.2" y="3.2" width="11.6" height="9.6" rx="1.4" /><path d="M8 3.2v9.6" /></svg>
+        双栏对比
+      </button>
+      <button class="gd-btn">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.6h10M3 8h10M3 11.4h5.5" /></svg>
+        单栏对比
+      </button>
+      <button class="gd-btn">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.9 2.4l2.7 2.7-7.2 7.2H3.7v-2.7z" /><path d="M9.6 3.7l2.7 2.7" /></svg>
+        编辑
+      </button>
+      <span style="flex:1"></span>
+      <button class="gd-btn">官方预览</button>
+      <button class="gd-btn">+ 暂存</button>
+      <button class="gd-btn primary">已同步</button>
+    </div>
+  </div>
+
+  <div class="df-panes">
+    <div class="df-pane">
+      <div class="df-line df-hunk"><span class="df-num">40</span><span class="df-sign">@@</span>@@ -40,7 +40,9 @@</div>
+      <div class="df-line"><span class="df-num">40</span><span class="df-sign"> </span>export function AddressForm() {</div>
+      <div class="df-line"><span class="df-num">41</span><span class="df-sign"> </span>  const [form, setForm] = useState(initial)</div>
+      <div class="df-line df-del"><span class="df-num">42</span><span class="df-sign">-</span>  const city = form.city</div>
+      <div class="df-line df-del"><span class="df-num">43</span><span class="df-sign">-</span>  const district = form.district</div>
+      <div class="df-line"><span class="df-num">44</span><span class="df-sign"> </span></div>
+      <div class="df-line"><span class="df-num">45</span><span class="df-sign"> </span>  return (</div>
+      <div class="df-line"><span class="df-num">46</span><span class="df-sign"> </span>    &lt;Field label="城市" value={city} /&gt;</div>
+    </div>
+    <div class="df-pane right">
+      <div class="df-line df-hunk"><span class="df-num">40</span><span class="df-sign">@@</span>@@ -40,7 +40,9 @@</div>
+      <div class="df-line"><span class="df-num">40</span><span class="df-sign"> </span>export function AddressForm() {</div>
+      <div class="df-line"><span class="df-num">41</span><span class="df-sign"> </span>  const [form, setForm] = useState(initial)</div>
+      <div class="df-line df-add"><span class="df-num">42</span><span class="df-sign">+</span>  const { city, district, street } = form</div>
+      <div class="df-line df-add"><span class="df-num">43</span><span class="df-sign">+</span>  const full = [city, district, street].join(' ')</div>
+      <div class="df-line"><span class="df-num">44</span><span class="df-sign"> </span></div>
+      <div class="df-line"><span class="df-num">45</span><span class="df-sign"> </span>  return (</div>
+      <div class="df-line"><span class="df-num">46</span><span class="df-sign"> </span>    &lt;Field label="城市" value={city} /&gt;</div>
+    </div>
+  </div>
+
+  <div class="gd-fold">
+    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.4 6.2L8 2.9l3.6 3.3M4.4 9.8L8 13.1l3.6-3.3" /></svg>
+    已折叠下方第 47–96 行未改动代码 (50 行)
+  </div>
+</section>
+
+<!-- ================= 文件树改动标记（虚构示例） ================= -->
+<section id="section-tree">
+  <div class="ft-title">文件</div>
+  <div class="ft-item"><span class="ft-caret">▾</span><span class="ft-name">src</span><span class="ft-dot"></span></div>
+  <div class="ft-item ft-indent"><span class="ft-caret">▾</span><span class="ft-name">pages</span><span class="ft-dot"></span></div>
+  <div class="ft-item" style="padding-left:36px"><span class="ft-caret">▾</span><span class="ft-name">checkout</span><span class="ft-dot"></span></div>
+  <div class="ft-item" style="padding-left:54px"><span class="ft-caret"></span><span class="ft-name">AddressForm.tsx</span><span class="ft-badge ft-m">M</span></div>
+  <div class="ft-item" style="padding-left:54px"><span class="ft-caret"></span><span class="ft-name">PaymentBox.tsx</span><span class="ft-badge ft-a">A</span></div>
+  <div class="ft-item" style="padding-left:36px"><span class="ft-caret"></span><span class="ft-name">LegacyCart.tsx</span><span class="ft-badge ft-d">D</span></div>
+  <div class="ft-item ft-indent"><span class="ft-caret">▸</span><span class="ft-name">hooks</span></div>
+  <div class="ft-item ft-indent"><span class="ft-caret">▸</span><span class="ft-name">utils</span><span class="ft-dot"></span></div>
+  <div class="ft-item" style="padding-left:36px"><span class="ft-caret"></span><span class="ft-name">newHelper.ts</span><span class="ft-badge ft-u">U</span></div>
 </section>
 
 </body>

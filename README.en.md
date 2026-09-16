@@ -53,7 +53,7 @@ A Git panel plugin for the DSH Web GUI: branch management (switch / pull / fetch
 
 **File-tree change badges** — changed files carry a status letter after the name and a tinted filename, and directories with changes get a dot, just like VS Code's Explorer:
 
-![File tree change badges](docs/git-filetree-status.png)
+![File tree change badges](docs/git-filetree-status.png?v=0.1.17)
 
 **Git diff view** — full-width side-by-side diff with aligned line numbers, collapsible unchanged regions, and change statistics plus actions in the header:
 
@@ -65,7 +65,7 @@ A Git panel plugin for the DSH Web GUI: branch management (switch / pull / fetch
 
 **Native tab in the right sidebar** — Git sits beside the built-in "Files" tab, and the sidebar owns expand/collapse, width drag, and tab switching:
 
-![Git tab in the right sidebar](docs/sidebar-tab.png)
+![Git tab in the right sidebar](docs/sidebar-tab.png?v=0.1.17)
 
 **Branch panel** (local/remote branches, ahead/behind, double-click to switch, right-click menu):
 
@@ -73,11 +73,11 @@ A Git panel plugin for the DSH Web GUI: branch management (switch / pull / fetch
 
 **Branch chip** (quick branch switching above the input box):
 
-![Branch chip](docs/chip.png)
+![Branch chip](docs/chip.png?v=0.1.17)
 
 **Commit graph** (resizable three-column layout, virtualized scrolling):
 
-![Commit graph](docs/graph.png)
+![Commit graph](docs/graph.png?v=0.1.17)
 
 ## Installation
 

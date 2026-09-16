@@ -51,11 +51,11 @@ Un plugin de panel de Git para la GUI web de DSH: gestión de ramas (cambiar / t
 
 **Pestaña nativa en la barra lateral derecha** — Git aparece junto a la pestaña integrada «Archivos»; la barra lateral gestiona expandir/contraer, el ancho y el cambio de pestañas:
 
-![Pestaña Git en la barra lateral derecha](docs/sidebar-tab.png)
+![Pestaña Git en la barra lateral derecha](docs/sidebar-tab.png?v=0.1.17)
 
 **Marcas de cambios en el árbol de archivos** (añadido / modificado / eliminado, con insignias de conflicto):
 
-![Marcas de cambios en el árbol de archivos](docs/git-filetree-status.png)
+![Marcas de cambios en el árbol de archivos](docs/git-filetree-status.png?v=0.1.17)
 
 **Vista de diferencias estilo VS Code** (lado a lado, desplazamiento sincronizado):
 
@@ -71,11 +71,11 @@ Un plugin de panel de Git para la GUI web de DSH: gestión de ramas (cambiar / t
 
 **Chip de rama** (cambio rápido de rama encima del cuadro de entrada):
 
-![Chip de rama](docs/chip.png)
+![Chip de rama](docs/chip.png?v=0.1.17)
 
 **Gráfico de commits** (columnas redimensionables, scroll virtualizado):
 
-![Gráfico de commits](docs/graph.png)
+![Gráfico de commits](docs/graph.png?v=0.1.17)
 
 ## Instalación
 
