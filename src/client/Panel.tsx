@@ -8,6 +8,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import type { BranchesView, BranchRow, GraphView, OpResult } from '../core/types.ts'
 import type { Envelope, GitPanelApi } from './api.ts'
 import { runBatch } from './batch-stage.ts'
+import { classifyChanges } from './change-groups.ts'
 import { layoutGraph, type LayoutCommit } from './graph.ts'
 import { tError, useT } from './i18n.ts'
 import { icon, type IconName } from './icons.tsx'
@@ -115,8 +116,10 @@ const STYLE = `
 .dsh-gp-input-btn:hover:not(:disabled) { background:var(--hover); border-color:var(--border); color:var(--fg); }
 .dsh-gp-input-btn:disabled { cursor:default; opacity:0.55; }
 .dsh-gp-input-btn .dsh-gp-spinner { width:11px; height:11px; }
-.dsh-gp-write-status { flex:1; min-width:0; font-size:11px; color:var(--muted);
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* 状态摘要：内容是人话（可能较长），换行显示而不是省略号截断——截断会把
+   「12 个文件已改动 · 4 已暂存 · 8 未暂存」的关键数字吃掉，那正是它存在的意义。
+   完整的 porcelain 原文仍挂在 title 上供悬停查看。 */
+.dsh-gp-write-status { flex:1; min-width:0; font-size:11px; color:var(--muted); line-height:1.45; }
 .dsh-gp-write-stash { font-size:11px; color:var(--muted); white-space:pre-wrap; word-break:break-all; }
 .dsh-gp-detail-actions { display:flex; gap:6px; margin-top:6px; }
 .dsh-gp-detail-actions .dsh-gp-btn { font-size:11px; padding:2px 8px; }
@@ -249,6 +252,26 @@ export const GLOBAL_GIT_BUSY_MAP = new Map<string, { busy?: boolean; pendingOp?:
 /** 右键菜单项的统一图标前缀（与全插件同一套图标）。 */
 function menuIcon(name: IconName): React.ReactElement {
   return <span className="dsh-gp-menu-ico">{icon(name, 13)}</span>
+}
+
+/**
+ * 即时 tooltip 的属性展开助手。
+ *
+ * 自绘 tooltip 需要在 mouseenter/leave 与 focus/blur 四处接线（键盘可达性要求
+ * 焦点也要出提示），手写四遍既啰嗦又容易漏掉 focus 那两条。这里统一展开。
+ */
+function tipProps(text: string): {
+  onMouseEnter: (event: React.MouseEvent<HTMLElement>) => void
+  onMouseLeave: () => void
+  onFocus: (event: React.FocusEvent<HTMLElement>) => void
+  onBlur: () => void
+} {
+  return {
+    onMouseEnter: (event) => showTip(event.currentTarget, text),
+    onMouseLeave: hideTip,
+    onFocus: (event) => showTip(event.currentTarget, text),
+    onBlur: hideTip,
+  }
 }
 
 /**
@@ -782,6 +805,11 @@ export function GitPanel(props: {
   useEffect(() => {
     // 切走再切回：上一个仓库那次未完成的生成已经不适用了，别让新仓库的按钮一直转圈。
     setGenerating(false)
+    // 同理，切换仓库时先丢弃上一个仓库的变更结论：否则在新请求返回前，状态摘要
+    // 会拿旧仓库的 changes 去描述新仓库（比如把有改动的仓库说成「干净」）。
+    setChanges([])
+    setStatusText('')
+    setStatusLoaded(false)
     const globalState = GLOBAL_GIT_BUSY_MAP.get(path)
     if (globalState) {
       if (globalState.busy !== undefined) setBusyState(globalState.busy)
@@ -809,6 +837,8 @@ export function GitPanel(props: {
   // 上一次由自适应写入的 inline height；被外部改过即说明用户拖了高度。
   const appliedHeightRef = useRef<string | null>(null)
   const [statusText, setStatusText] = useState('')
+  // 是否已成功读到过一次变更状态（用于区分「干净」与「读不到」）。
+  const [statusLoaded, setStatusLoaded] = useState(false)
   const [stashText, setStashText] = useState('')
   // 变更文件列表 + 选中的文件 diff。
   const [changes, setChanges] = useState<Array<{ code: string; file: string }>>([])
@@ -880,6 +910,9 @@ export function GitPanel(props: {
     const result = await api.status(path)
     const output = result.ok ? result.value.output : ''
     setStatusText(output)
+    // 只有成功读到状态才敢声称「工作区干净」：请求失败时 changes 同样是空数组，
+    // 但那是「读不到」而不是「没改动」，两者必须在界面上区分开。
+    setStatusLoaded(result.ok)
     // porcelain 固定宽度：前 2 字符是 XY 状态码，第 3 字符是分隔空格，其余是路径。
     // 不能用 /^(\S+)\s+/：未暂存修改的 X 位本身是空格（" M path"），会被整行漏掉，
     // 导致「仅工作区修改」的文件在变更列表里彻底消失。
@@ -1085,6 +1118,27 @@ export function GitPanel(props: {
   }, [load, t])
 
   const repoName = branches?.repo ?? ''
+
+  /**
+   * 变更状态的一句话摘要（替代原先直接暴露 `git status --porcelain` 首行的做法）。
+   *
+   * porcelain 是给程序读的机器格式（` M path`、`?? path`），带前导空格与两位
+   * 状态码，直接显示在界面上用户读不懂；而且只取首行时多个文件只能看到一个，
+   * 信息量与下方变更列表重复。这里改用一句人话，复用已解析好的 changes。
+   */
+  const statusSummary = (() => {
+    // 还没读到状态（首次加载中或请求失败）时不显示任何结论，避免把「读不到」
+    // 谎报成「工作区干净」。
+    if (!statusLoaded) return ''
+    if (changes.length === 0) return t('write.status.clean')
+    const { conflicts, staged, unstaged } = classifyChanges(changes)
+    const base = t('write.status.summary', {
+      total: String(changes.length),
+      staged: String(staged.length),
+      unstaged: String(unstaged.length),
+    })
+    return conflicts.length > 0 ? base + t('write.status.conflicts', { count: String(conflicts.length) }) : base
+  })()
   // 进行中操作的本地化名称（用于进度条/按钮的无障碍标签）。
   const pendingOpLabel =
     pendingOp === 'pull' ? t('op.pulling')
@@ -1194,10 +1248,7 @@ export function GitPanel(props: {
             <button type="button" className="dsh-gp-input-btn"
               disabled={busy || generating}
               aria-label={t('write.commit.generate')}
-              onMouseEnter={(event) => showTip(event.currentTarget, t('write.commit.generate'))}
-              onMouseLeave={hideTip}
-              onFocus={(event) => showTip(event.currentTarget, t('write.commit.generate'))}
-              onBlur={hideTip}
+              {...tipProps(t('write.commit.generate'))}
               onClick={() => void generateMessage()}>
               {generating ? <span className="dsh-gp-spinner" role="status" aria-label={t('write.commit.generating')} /> : icon('sparkles', 13)}
             </button>
@@ -1214,19 +1265,19 @@ export function GitPanel(props: {
           </button>
         </div>
         <div className="dsh-gp-write-row">
-          <button className="dsh-gp-btn" disabled={busy}
+          <button className="dsh-gp-btn" disabled={busy} {...tipProps(t('write.stash.tip'))}
             onClick={() => void runWrite('stash-push')}>{t('write.stash')}</button>
-          <button className="dsh-gp-btn" disabled={busy}
+          <button className="dsh-gp-btn" disabled={busy} {...tipProps(t('write.stashPop.tip'))}
             onClick={() => void runWrite('stash-pop')}>{t('write.stashPop')}</button>
-          <button className="dsh-gp-btn" disabled={busy} onClick={() => void refreshStatus()}>{t('write.status')}</button>
-          <span className="dsh-gp-write-status" title={statusText}>{statusText.split('\n')[0] ?? ''}</span>
+          <button className="dsh-gp-btn" disabled={busy} {...tipProps(t('write.status.tip'))}
+            onClick={() => void refreshStatus()}>{t('write.status')}</button>
+          {/* title 保留完整的 porcelain 原文：人话摘要用于扫读，悬停可查机器原文。 */}
+          <span className="dsh-gp-write-status" title={statusText}>{statusSummary}</span>
         </div>
         {stashText !== '' ? <div className="dsh-gp-write-stash">{stashText}</div> : null}
         {(() => {
           if (changes.length === 0) return null
-          const conflicts = changes.filter((c) => c.code === 'UU' || c.code === 'AA' || c.code === 'UD' || c.code === 'DU')
-          const staged = changes.filter((c) => c.code[0] !== ' ' && c.code[0] !== '?' && !conflicts.includes(c))
-          const unstaged = changes.filter((c) => (c.code[1] !== ' ' || c.code === '??') && !conflicts.includes(c))
+          const { conflicts, staged, unstaged } = classifyChanges(changes)
 
           return (
             <div className="dsh-gp-changes">
