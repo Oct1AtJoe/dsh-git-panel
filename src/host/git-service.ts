@@ -467,6 +467,27 @@ export class GitService {
     return { ok: true, output: run.stdout }
   }
 
+  /**
+   * 暂存区（staged）的变更内容，外加仓库最近的提交主题。
+   *
+   * 自动生成提交信息只需这两样：`git diff --cached` 说明「改了什么」，
+   * 最近的主题说明「这个仓库怎么写提交信息」（语言 / 前缀 / 语气）。
+   * 暂存区为空时 diff 为空串，由调用方据此给出提示且不触发生成。
+   */
+  async stagedContext(path: string): Promise<{ ok: true; diff: string; subjects: string[] } | { ok: false; error: GitError }> {
+    const canonical = await this.requireWorkspace(path)
+    const run = await this.runner.run(['diff', '--cached'], canonical)
+    if (run.exitCode !== 0) {
+      return { ok: false, error: { code: 'diff-failed', message: run.stderr.trim() || 'git diff --cached failed' } }
+    }
+    // 首条提交之前 log 会失败（无可引用的 HEAD），那不是错误，只是没有可模仿的先例。
+    const log = await this.runner.run(['log', '-5', '--format=%s'], canonical)
+    const subjects = log.exitCode === 0
+      ? log.stdout.split('\n').map((line) => line.trim()).filter((line) => line !== '')
+      : []
+    return { ok: true, diff: run.stdout, subjects }
+  }
+
   /** 获取文件 HEAD 版本的内容（git show HEAD:<仓库相对路径>）。 */
   async showHead(path: string, file: string): Promise<{ ok: boolean; output: string; error?: { code: string; message: string } }> {
     const canonical = await this.requireWorkspace(path)

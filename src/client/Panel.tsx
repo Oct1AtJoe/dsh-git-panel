@@ -90,9 +90,20 @@ const STYLE = `
 .dsh-gp-write { display:flex; flex-direction:column; gap:6px; padding:6px 8px; border-bottom:1px solid var(--border); }
 .dsh-gp-write-row { display:flex; gap:6px; align-items:center; }
 .dsh-gp-write .dsh-gp-btn { flex:none; }
+/* 提交信息输入框 + 其右端内部的「自动生成」星形按钮：按钮绝对定位贴在输入框
+   右缘内侧，视觉上明确属于输入框，而不是又一行并排的工具栏按钮。 */
+.dsh-gp-input-wrap { position:relative; flex:1; min-width:0; display:flex; }
 .dsh-gp-input { flex:1; min-width:0; padding:4px 8px; font-size:12px; color:var(--fg);
   background:var(--panel-bg); border:1px solid var(--border); border-radius:6px; outline:none; }
 .dsh-gp-input:focus { border-color:var(--current); }
+.dsh-gp-input-wrap .dsh-gp-input { padding-right:26px; }
+.dsh-gp-input-btn { position:absolute; right:3px; top:50%; transform:translateY(-50%);
+  width:20px; height:20px; padding:0; display:inline-flex; align-items:center; justify-content:center;
+  border:1px solid transparent; background:transparent; color:var(--muted); cursor:pointer; border-radius:5px;
+  transition:background .12s ease, color .12s ease, border-color .12s ease; }
+.dsh-gp-input-btn:hover:not(:disabled) { background:var(--hover); border-color:var(--border); color:var(--fg); }
+.dsh-gp-input-btn:disabled { cursor:default; opacity:0.55; }
+.dsh-gp-input-btn .dsh-gp-spinner { width:11px; height:11px; }
 .dsh-gp-write-status { flex:1; min-width:0; font-size:11px; color:var(--muted);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .dsh-gp-write-stash { font-size:11px; color:var(--muted); white-space:pre-wrap; word-break:break-all; }
@@ -726,6 +737,9 @@ export function GitPanel(props: {
   const [loading, setLoading] = useState(false)
   // 对进行中的加载做单调递增保护（见 load()）。
   const loadSeq = useRef(0)
+  // 当前工作区路径的实时快照：异步结果回来时用它判断会话是否已经切走。
+  const pathRef = useRef(path)
+  pathRef.current = path
   const [busy, setBusyState] = useState(() => GLOBAL_GIT_BUSY_MAP.get(path)?.busy ?? false)
   const [message, setMessageState] = useState<{ text: string; kind: 'ok' | 'err'; showAuthForm?: boolean } | null>(() => GLOBAL_GIT_BUSY_MAP.get(path)?.message ?? null)
   // 当前正在执行的操作种类（pull / push / sync / fetch / commit …），用于只在
@@ -750,6 +764,8 @@ export function GitPanel(props: {
 
   // 会话切换回来时，若全局正在执行后台操作，恢复视图上的状态
   useEffect(() => {
+    // 切走再切回：上一个仓库那次未完成的生成已经不适用了，别让新仓库的按钮一直转圈。
+    setGenerating(false)
     const globalState = GLOBAL_GIT_BUSY_MAP.get(path)
     if (globalState) {
       if (globalState.busy !== undefined) setBusyState(globalState.busy)
@@ -770,6 +786,8 @@ export function GitPanel(props: {
   const [renameValue, setRenameValue] = useState('')
   // 写操作：提交信息、变更状态、暂存列表。
   const [commitMsg, setCommitMsg] = useState('')
+  // 自动生成提交信息进行中（星形按钮的转圈与禁用）。
+  const [generating, setGenerating] = useState(false)
   const [statusText, setStatusText] = useState('')
   const [stashText, setStashText] = useState('')
   // 变更文件列表 + 选中的文件 diff。
@@ -881,6 +899,49 @@ export function GitPanel(props: {
     setPendingOp(null)
     setBusy(false)
   }, [path, api, busy, commitMsg, t, refreshStatus, load, onRefreshStatus])
+
+  /**
+   * 依据暂存区变更自动生成提交信息并回填输入框。
+   *
+   * 失败路径刻意**不**触碰 `commitMsg`：用户在输入框里手写的内容永远不该被一次
+   * 失败的生成抹掉。只有拿到非空结果时才覆盖（无论输入框原本有没有文字）。
+   *
+   * 面板实例会跨会话复用（`path` 是 prop），因此这里用发起时的 `path` 做快照：
+   * 结果回来时若已经切到别的仓库，一律丢弃——否则一次慢生成会把上一个仓库的
+   * 提交信息写进当前会话的输入框。
+   */
+  const generateMessage = useCallback(async (): Promise<void> => {
+    if (!path || generating || busy) return
+    const target = path
+    setGenerating(true)
+    setMessage({ text: t('write.commit.generating'), kind: 'ok' })
+    let result: Envelope<{ message: string }>
+    try {
+      result = await api.generateCommitMessage(target)
+    } catch (error) {
+      result = { ok: false, error: { code: 'internal', message: error instanceof Error ? error.message : String(error) } }
+    }
+    if (pathRef.current !== target) {
+      setGenerating(false)
+      return
+    }
+    if (result.ok) {
+      const text = result.value.message.trim()
+      if (text !== '') {
+        setCommitMsg(text)
+        setMessage({ text: t('write.commit.generated'), kind: 'ok' })
+      } else {
+        setMessage({ text: t('write.commit.failed', { reason: t('op.failed') }), kind: 'err' })
+      }
+    } else if (result.error.code === 'empty-stage') {
+      setMessage({ text: t('write.commit.emptyStage'), kind: 'err' })
+    } else if (result.error.code === 'no-model') {
+      setMessage({ text: t('write.commit.noModel'), kind: 'err' })
+    } else {
+      setMessage({ text: t('write.commit.failed', { reason: tError(result.error.code, result.error.message) }), kind: 'err' })
+    }
+    setGenerating(false)
+  }, [path, api, generating, busy, t])
 
   // 输入 dock 的 chip 会在一次成功的分支切换后派发这个事件。
   useEffect(() => {
@@ -1026,11 +1087,23 @@ export function GitPanel(props: {
       </div>
       <div className="dsh-gp-write">
         <div className="dsh-gp-write-row">
-          <input className="dsh-gp-input" value={commitMsg} placeholder={t('write.commit.placeholder')}
-            onChange={(event) => setCommitMsg(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && commitMsg.trim() !== '') void runWrite('commit')
-            }} />
+          <div className="dsh-gp-input-wrap">
+            <input className="dsh-gp-input" value={commitMsg} placeholder={t('write.commit.placeholder')}
+              onChange={(event) => setCommitMsg(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && commitMsg.trim() !== '') void runWrite('commit')
+              }} />
+            <button type="button" className="dsh-gp-input-btn"
+              disabled={busy || generating}
+              aria-label={t('write.commit.generate')}
+              onMouseEnter={(event) => showTip(event.currentTarget, t('write.commit.generate'))}
+              onMouseLeave={hideTip}
+              onFocus={(event) => showTip(event.currentTarget, t('write.commit.generate'))}
+              onBlur={hideTip}
+              onClick={() => void generateMessage()}>
+              {generating ? <span className="dsh-gp-spinner" role="status" aria-label={t('write.commit.generating')} /> : icon('star', 13)}
+            </button>
+          </div>
           <button className="dsh-gp-btn" disabled={busy || commitMsg.trim() === ''}
             onClick={() => void runWrite('commit')}>{t('write.commit')}</button>
           <button className="dsh-gp-btn" disabled={busy}

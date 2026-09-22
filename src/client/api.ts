@@ -124,6 +124,11 @@ export class GitPanelApi {
     return post<OpResult>('/git-panel/commit', { path, message })
   }
 
+  /** 读取暂存区内容，由当前默认模型生成一条提交信息。 */
+  generateCommitMessage(path: string) {
+    return post<{ message: string }>('/git-panel/generate-commit-message', { path })
+  }
+
   push(path: string) {
     return post<OpResult>('/git-panel/push', { path })
   }

@@ -42,6 +42,7 @@ export type IconName =
   | 'info'
   | 'list'
   | 'external'
+  | 'star'
 
 /** 每个图标由若干 SVG 子元素描述（与绘制顺序一致）。 */
 const SHAPES: Record<IconName, Array<Record<string, unknown>>> = {
@@ -125,6 +126,7 @@ const SHAPES: Record<IconName, Array<Record<string, unknown>>> = {
     { d: 'M13.4 2.6L7.6 8.4' },
     { d: 'M12 10v2.6a1.4 1.4 0 0 1-1.4 1.4H3.4A1.4 1.4 0 0 1 2 12.6V5.4A1.4 1.4 0 0 1 3.4 4H6' },
   ],
+  star: [{ d: 'M8 2.2l1.8 3.7 4 .6-2.9 2.8.7 4L8 11.4l-3.6 1.9.7-4-2.9-2.8 4-.6z' }],
 }
 
 /**

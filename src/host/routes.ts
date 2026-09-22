@@ -9,6 +9,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { GitError } from '../core/types.ts'
 import type { GitService } from './git-service.ts'
+import { generateCommitMessage } from './commit-message.ts'
 
 type Envelope<T> = { ok: true; value: T } | { ok: false; error: GitError }
 
@@ -49,7 +50,7 @@ function field(payload: unknown, key: string): string | null {
 
 const BAD_REQUEST: GitError = { code: 'internal', message: 'malformed request' }
 
-function route(service: GitService) {
+function route(service: GitService, ctx: Context) {
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const url = new URL(req.url ?? '/', 'http://dsh')
     const path = url.pathname
@@ -139,6 +140,13 @@ function route(service: GitService) {
           if (message === null) { json(res, { ok: false, error: BAD_REQUEST }, 400); return }
           const value = await service.commit(root, message)
           json(res, value.ok ? { ok: true, value } : { ok: false, error: value.error ?? BAD_REQUEST })
+          return
+        }
+        case '/git-panel/generate-commit-message': {
+          // 读取暂存区内容交给当前默认模型生成提交信息；暂存区为空与生成失败
+          // 都以稳定错误码返回，由客户端分别呈现且不改动输入框。
+          const value = await generateCommitMessage(ctx, service, root)
+          json(res, value.ok ? { ok: true, value: { message: value.message } } : { ok: false, error: value.error })
           return
         }
         case '/git-panel/push': {
@@ -292,5 +300,5 @@ function route(service: GitService) {
 
 /** 注册 /git-panel 各路由。 */
 export function registerGitPanelRoutes(ctx: Context, service: GitService): () => void {
-  return ctx.webServer.register({ kind: 'prefix', path: '/git-panel', handler: route(service) })
+  return ctx.webServer.register({ kind: 'prefix', path: '/git-panel', handler: route(service, ctx) })
 }

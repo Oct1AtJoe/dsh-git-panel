@@ -17,6 +17,7 @@ A Git panel plugin for the DSH Web GUI: branch management (switch / pull / fetch
 - **Git graph**: commit DAG lanes, three-column header (Lanes / Commit / Branch), the commit column is resizable from both sides (width persisted), click a node for commit details; virtualized rendering — only the visible viewport is drawn, so large repositories scroll smoothly
 - **Write bar** (top of the panel, under the tabs):
   - **Commit**: type a message and press Enter → `git add -A && git commit -m`
+  - **Generate commit message**: the star button inside the right end of the message field reads the **staged** changes, hands them to your current default model together with the repository's recent commit subjects, and writes the generated message back into the field (an existing draft is replaced). With an empty staging area it reports that instead of generating; on failure it reports the failure and **leaves whatever you had typed untouched**
   - **Push**: one-click `git push` of the current branch
   - **Stash / pop**: `git stash push` (optional message) / `git stash pop`
   - **Status**: shows the number of changed files (`git status --porcelain`)

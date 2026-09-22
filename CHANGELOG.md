@@ -2,6 +2,25 @@
 
 `dsh-git-panel` 的版本变更记录。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### Added
+- **自动生成提交信息**（写操作条 · 提交信息输入框右端内部新增星形图标按钮）：
+  - 点击后读取**暂存区（`git diff --cached`）**的变更内容，连同仓库最近 5 条提交的主题
+    一起交给当前默认模型（`agentDefaultModel.currentSelection()` 选定的 provider/model），
+    生成一条符合本仓库语言与提交前缀习惯的信息并回填输入框；
+  - 输入框已有文字时，生成结果直接覆盖；
+  - **异常处理**：暂存区为空时返回 `empty-stage`，界面给出「请先暂存改动」的明确提示，
+    不触发生成、不改动输入框内容；生成失败（无默认模型 / 模型报错 / 空输出）时给出失败
+    提示，**输入框里已有的输入原样保留**，绝不因一次失败抹掉手写内容；
+  - 生成期间按钮转为转圈 spinner 并禁用，与其它写操作一样防重入。
+
+### Notes
+- 模型路由通过 `ctx.get('llm')` 与 `ctx.get('agentDefaultModel')` **按需获取**，两者都不是
+  本插件的必需依赖：缺少它们的部署仍能正常加载，只是这个按钮会返回 `no-model` 并提示
+  去设置里选默认模型。
+- 新增宿主路由 `POST /git-panel/generate-commit-message`，与其它路由一样受工作区门禁约束。
+
 ## [0.1.19] - 2026-09-16
 
 ### Fixed
