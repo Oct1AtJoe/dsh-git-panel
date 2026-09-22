@@ -385,7 +385,13 @@ export class GitService {
   /** 工作区状态摘要：变更文件列表（git status --porcelain）并自动读取 MERGE_MSG。 */
   async status(path: string): Promise<{ ok: boolean; output: string; mergeMsg?: string; error?: { code: string; message: string } }> {
     const canonical = await this.requireWorkspace(path)
-    const run = await this.runner.run(['status', '--porcelain'], canonical)
+    // 必须带 --untracked-files=all，且必须与 fileStatus() 用同一组参数。
+    // git 默认是 normal：整个未跟踪目录会被折叠成一行 `?? dir/`，于是
+    // 「目录里有 11 个文件」在面板上只显示 1 行，其中到底有什么完全看不到；
+    // 而且折叠行的路径带尾部斜杠，行内动作（内嵌 diff / 复制路径）拿到
+    // 目录而非文件路径，行为不正确。fileStatus() 一直是 all，这里对齐后
+    // 两条路径对同一仓库给出同样的结论（否则状态栏计数与文件树标记会打架）。
+    const run = await this.runner.run(['status', '--porcelain', '--untracked-files=all'], canonical)
     if (run.exitCode !== 0) {
       return { ok: false, output: '', error: { code: 'status-failed', message: run.stderr.trim() || 'git status failed' } }
     }
