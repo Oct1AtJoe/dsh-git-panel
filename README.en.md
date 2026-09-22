@@ -18,7 +18,7 @@ A Git panel plugin for the DSH Web GUI: branch management (switch / pull / fetch
 - **Write bar** (top of the panel, under the tabs):
   - **Commit**: type a message and press Enter → `git add -A && git commit -m`
   - **Generate commit message**: the generate button inside the right end of the message field (Lucide "sparkles" semantics, drawn from the plugin's single `icon()` set) reads the **staged** changes, hands them to your current default model together with the repository's recent commit subjects, and writes the generated message back into the field (an existing draft is replaced). With an empty staging area it reports that instead of generating; on failure it reports the failure and **leaves whatever you had typed untouched**
-  - **Multi-line message**: the field is an auto-growing textarea, so a generated message (subject + body) wraps instead of scrolling sideways; `Enter` commits, `Shift+Enter` inserts a newline
+  - **Multi-line message**: the field is an auto-growing textarea, so a generated message (subject + body) wraps instead of scrolling sideways, and no vertical scrollbar appears; drag the bottom-right corner like any textarea to set the height yourself (once you do, auto-growth stops overriding it). `Enter` commits, `Shift+Enter` inserts a newline
   - **Push**: one-click `git push` of the current branch
   - **Stash / pop**: `git stash push` (optional message) / `git stash pop`
   - **Status**: shows the number of changed files (`git status --porcelain`)

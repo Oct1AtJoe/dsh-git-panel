@@ -97,11 +97,14 @@ const STYLE = `
 .dsh-gp-input { flex:1; min-width:0; padding:4px 8px; font-size:12px; color:var(--fg);
   background:var(--panel-bg); border:1px solid var(--border); border-radius:6px; outline:none; }
 .dsh-gp-input:focus { border-color:var(--current); }
-/* 提交信息是多行文本（生成的信息常带正文），因此用 textarea 自动撑高，
-   长文本换行显示，不再需要横向滚动。高度由 JS 按 scrollHeight 自适应。
-   resize:none + max-height 兜底：极长信息在框内滚动，不会把整行按钮挤出面板。 */
-.dsh-gp-textarea { display:block; resize:none; overflow-y:auto; line-height:1.5;
-  min-height:26px; max-height:132px; font-family:inherit; }
+/* 提交信息是多行文本（生成的信息常带正文），因此用 textarea 按内容自动撑高，
+   长文本换行显示，不需要横向滚动；右下角保留原生的纵向拖拽把手，高度由用户
+   自己决定。
+   overflow-y:auto 而不是 hidden：用户把框拖得比内容还矮时，内容仍然可达
+   （hidden 会把内容裁掉且无法滚动查看）。正常长度的内容不会触发滚动条。
+   max-height 只是安全网，防止异常长的模型输出把整个面板挤出视野。 */
+.dsh-gp-textarea { display:block; resize:vertical; overflow-y:auto; line-height:1.5;
+  min-height:26px; max-height:40vh; font-family:inherit; }
 .dsh-gp-input-wrap .dsh-gp-textarea { padding-right:26px; }
 /* 生成按钮贴输入框右上：单行（26px 高）时正好垂直居中，多行时贴顶不跟着下沉。
    绝对定位使其脱离 flex 流，因此不会影响 textarea 自身的高度计算。 */
@@ -803,6 +806,8 @@ export function GitPanel(props: {
   const [generating, setGenerating] = useState(false)
   // 提交信息输入框：textarea 随内容自适应高度。
   const commitRef = useRef<HTMLTextAreaElement | null>(null)
+  // 上一次由自适应写入的 inline height；被外部改过即说明用户拖了高度。
+  const appliedHeightRef = useRef<string | null>(null)
   const [statusText, setStatusText] = useState('')
   const [stashText, setStashText] = useState('')
   // 变更文件列表 + 选中的文件 diff。
@@ -813,14 +818,37 @@ export function GitPanel(props: {
 
   ensureStyle()
 
-  // 提交信息框自适应高度：先把高度归零再按 scrollHeight 设值，否则删字后
-  // 高度回不去。程序化回填（自动生成）与手输走的是同一条路径，两者都能撑开。
-  // max-height 由 CSS 兜底，超出部分转为框内纵向滚动。
+  /**
+   * 提交信息框按内容自适应高度。
+   *
+   * 两个容易踩的点，都已实证（无头 Edge 实测）：
+   *
+   * 1. **必须补上边框**：`.dsh-gp *` 有 `box-sizing:border-box`，而 `scrollHeight`
+   *    不含边框、border-box 的 `height` 含边框。直接写 `height = scrollHeight`
+   *    会让内容区比内容矮 2px——连一行短文本都持续溢出，滚动条永远挂着。
+   * 2. **用户拖过之后必须停手**：`resize:vertical` 的把手由浏览器写 inline
+   *    `height`，本效果也在写同一个属性，一打字就会把用户拖出来的高度冲掉。
+   *    判据是「inline height 是否还等于上一次我们自己写入的值」——被外部改过
+   *    即视为用户接管。（不用元素 resize 事件：那依赖事件触发时机，而比较
+   *    inline 值确定可测。）接管后不再干预，直到输入框清空时交还自适应。
+   */
   useLayoutEffect(() => {
     const el = commitRef.current
     if (el === null) return
+    // 空内容代表一次提交完成 / 新会话：交还控制权给自适应。
+    if (commitMsg === '') {
+      el.style.height = ''
+      appliedHeightRef.current = null
+      return
+    }
+    // 用户拖过高度（inline 值已不是我们上次写的那个）：不要再覆盖。
+    if (appliedHeightRef.current !== null && el.style.height !== appliedHeightRef.current) return
+
     el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
+    const border = el.offsetHeight - el.clientHeight
+    const next = `${el.scrollHeight + border}px`
+    el.style.height = next
+    appliedHeightRef.current = next
   }, [commitMsg])
 
   const load = useCallback(async () => {

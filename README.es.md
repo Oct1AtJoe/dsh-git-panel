@@ -18,7 +18,7 @@ Un plugin de panel de Git para la GUI web de DSH: gestión de ramas (cambiar / t
 - **Barra de escritura** (parte superior del panel, bajo las pestañas):
   - **Confirmar (commit)**: escriba un mensaje y pulse Enter → `git add -A && git commit -m`
   - **Generar mensaje de commit**: el botón de generación dentro del extremo derecho del campo (semántica Lucide «sparkles», del único juego de iconos `icon()` del plugin) lee los cambios **preparados (staged)**, los entrega al modelo predeterminado actual junto con los asuntos de los commits recientes del repositorio, y escribe el mensaje generado en el campo (si ya había texto, se reemplaza). Si no hay nada preparado lo indica sin generar; si falla, lo indica y **deja intacto lo que haya escrito**
-  - **Mensaje multilínea**: el campo es un textarea que crece solo, así que un mensaje generado (asunto + cuerpo) se ajusta en varias líneas en lugar de desplazarse en horizontal; `Enter` confirma, `Shift+Enter` inserta un salto de línea
+  - **Mensaje multilínea**: el campo es un textarea que crece solo, así que un mensaje generado (asunto + cuerpo) se ajusta en varias líneas en lugar de desplazarse en horizontal, y no aparece barra de desplazamiento vertical; arrastre la esquina inferior derecha como en cualquier textarea para fijar la altura usted mismo (una vez lo haga, el crecimiento automático deja de sobrescribirla). `Enter` confirma, `Shift+Enter` inserta un salto de línea
   - **Empujar (push)**: `git push` de la rama actual con un clic
   - **Guardar / recuperar (stash)**: `git stash push` (mensaje opcional) / `git stash pop`
   - **Estado**: muestra el número de archivos modificados (`git status --porcelain`)
