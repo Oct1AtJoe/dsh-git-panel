@@ -42,7 +42,7 @@ export type IconName =
   | 'info'
   | 'list'
   | 'external'
-  | 'star'
+  | 'sparkles'
 
 /** 每个图标由若干 SVG 子元素描述（与绘制顺序一致）。 */
 const SHAPES: Record<IconName, Array<Record<string, unknown>>> = {
@@ -126,7 +126,14 @@ const SHAPES: Record<IconName, Array<Record<string, unknown>>> = {
     { d: 'M13.4 2.6L7.6 8.4' },
     { d: 'M12 10v2.6a1.4 1.4 0 0 1-1.4 1.4H3.4A1.4 1.4 0 0 1 2 12.6V5.4A1.4 1.4 0 0 1 3.4 4H6' },
   ],
-  star: [{ d: 'M8 2.2l1.8 3.7 4 .6-2.9 2.8.7 4L8 11.4l-3.6 1.9.7-4-2.9-2.8 4-.6z' }],
+  // Lucide「sparkles」语义：一颗四角星 + 两枚霰点，读作「由模型生成」，
+  // 比通用的五角星（易被读成收藏 / 星标）更贴合本按钮的职责。
+  // 主星四臂朝上下左右、中心在 (8,8)，霰点落在对角留白处，整体不偏不倚。
+  sparkles: [
+    { d: 'M8 2.4Q8.5 7.5 13.6 8Q8.5 8.5 8 13.6Q7.5 8.5 2.4 8Q7.5 7.5 8 2.4Z' },
+    { d: 'M13.1 2.5v2.3M11.95 3.65h2.3' },
+    { d: 'M2.9 11.2v2.3M1.75 12.35h2.3' },
+  ],
 }
 
 /**

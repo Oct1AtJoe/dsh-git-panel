@@ -7,6 +7,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { BranchesView, BranchRow, GraphView, OpResult } from '../core/types.ts'
 import type { Envelope, GitPanelApi } from './api.ts'
+import { runBatch } from './batch-stage.ts'
 import { layoutGraph, type LayoutCommit } from './graph.ts'
 import { tError, useT } from './i18n.ts'
 import { icon, type IconName } from './icons.tsx'
@@ -90,14 +91,21 @@ const STYLE = `
 .dsh-gp-write { display:flex; flex-direction:column; gap:6px; padding:6px 8px; border-bottom:1px solid var(--border); }
 .dsh-gp-write-row { display:flex; gap:6px; align-items:center; }
 .dsh-gp-write .dsh-gp-btn { flex:none; }
-/* 提交信息输入框 + 其右端内部的「自动生成」星形按钮：按钮绝对定位贴在输入框
+/* 提交信息输入框 + 其右端内部的「自动生成」按钮：按钮绝对定位贴在输入框
    右缘内侧，视觉上明确属于输入框，而不是又一行并排的工具栏按钮。 */
-.dsh-gp-input-wrap { position:relative; flex:1; min-width:0; display:flex; }
+.dsh-gp-input-wrap { position:relative; flex:1; min-width:0; display:flex; align-items:stretch; }
 .dsh-gp-input { flex:1; min-width:0; padding:4px 8px; font-size:12px; color:var(--fg);
   background:var(--panel-bg); border:1px solid var(--border); border-radius:6px; outline:none; }
 .dsh-gp-input:focus { border-color:var(--current); }
-.dsh-gp-input-wrap .dsh-gp-input { padding-right:26px; }
-.dsh-gp-input-btn { position:absolute; right:3px; top:50%; transform:translateY(-50%);
+/* 提交信息是多行文本（生成的信息常带正文），因此用 textarea 自动撑高，
+   长文本换行显示，不再需要横向滚动。高度由 JS 按 scrollHeight 自适应。
+   resize:none + max-height 兜底：极长信息在框内滚动，不会把整行按钮挤出面板。 */
+.dsh-gp-textarea { display:block; resize:none; overflow-y:auto; line-height:1.5;
+  min-height:26px; max-height:132px; font-family:inherit; }
+.dsh-gp-input-wrap .dsh-gp-textarea { padding-right:26px; }
+/* 生成按钮贴输入框右上：单行（26px 高）时正好垂直居中，多行时贴顶不跟着下沉。
+   绝对定位使其脱离 flex 流，因此不会影响 textarea 自身的高度计算。 */
+.dsh-gp-input-btn { position:absolute; right:3px; top:3px;
   width:20px; height:20px; padding:0; display:inline-flex; align-items:center; justify-content:center;
   border:1px solid transparent; background:transparent; color:var(--muted); cursor:pointer; border-radius:5px;
   transition:background .12s ease, color .12s ease, border-color .12s ease; }
@@ -114,7 +122,12 @@ const STYLE = `
   color:#d29922; border-radius:6px; padding:4px 8px; font-size:11px; font-weight:600; display:flex; align-items:center; gap:4px; }
 [data-ds-dark-theme] .dsh-gp-conflict-banner { color:#e3b341; border-color:rgba(227,179,65,0.4); }
 .dsh-gp-changes-group { display:flex; flex-direction:column; gap:2px; }
-.dsh-gp-changes-group-head { font-size:10.5px; color:var(--muted); font-weight:600; padding:2px 4px; display:flex; justify-content:space-between; }
+.dsh-gp-changes-group-head { font-size:10.5px; color:var(--muted); font-weight:600; padding:2px 4px; display:flex; align-items:center; justify-content:space-between; gap:6px; }
+/* 分组头右侧的批量操作：与分组标题同一行、紧贴右缘，用比行内动作更轻的
+   图标按钮（复用 .dsh-gp-act 的视觉语言），不额外增加一行的高度。 */
+.dsh-gp-group-actions { display:flex; align-items:center; gap:2px; flex:none; }
+.dsh-gp-changes-group-head .dsh-gp-act { opacity:1; }
+.dsh-gp-changes-title { display:flex; align-items:center; justify-content:space-between; gap:6px; padding:2px 0 4px; font-size:11px; color:var(--muted); }
 .dsh-gp-changes-list { display:flex; flex-direction:column; gap:2px; max-height:140px; overflow-y:auto; }
 .dsh-gp-changes-item { display:flex; align-items:center; gap:4px; padding:3px 6px; border-radius:5px;
   font-size:11px; color:var(--fg); cursor:pointer; min-width:0; }
@@ -786,8 +799,10 @@ export function GitPanel(props: {
   const [renameValue, setRenameValue] = useState('')
   // 写操作：提交信息、变更状态、暂存列表。
   const [commitMsg, setCommitMsg] = useState('')
-  // 自动生成提交信息进行中（星形按钮的转圈与禁用）。
+  // 自动生成提交信息进行中（生成按钮的转圈与禁用）。
   const [generating, setGenerating] = useState(false)
+  // 提交信息输入框：textarea 随内容自适应高度。
+  const commitRef = useRef<HTMLTextAreaElement | null>(null)
   const [statusText, setStatusText] = useState('')
   const [stashText, setStashText] = useState('')
   // 变更文件列表 + 选中的文件 diff。
@@ -797,6 +812,16 @@ export function GitPanel(props: {
   const [branchSearch, setBranchSearch] = useState('')
 
   ensureStyle()
+
+  // 提交信息框自适应高度：先把高度归零再按 scrollHeight 设值，否则删字后
+  // 高度回不去。程序化回填（自动生成）与手输走的是同一条路径，两者都能撑开。
+  // max-height 由 CSS 兜底，超出部分转为框内纵向滚动。
+  useLayoutEffect(() => {
+    const el = commitRef.current
+    if (el === null) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [commitMsg])
 
   const load = useCallback(async () => {
     if (!path) return
@@ -899,6 +924,46 @@ export function GitPanel(props: {
     setPendingOp(null)
     setBusy(false)
   }, [path, api, busy, commitMsg, t, refreshStatus, load, onRefreshStatus])
+
+  /**
+   * 批量暂存 / 取消暂存一组文件。
+   *
+   * 复用既有的单文件接口（串行执行的理由见 batch-stage.ts）。失败时仍要刷新：
+   * 前面已成功的部分已经改动了 index，界面必须跟上磁盘。
+   */
+  const runBatchStage = useCallback(async (
+    files: string[],
+    action: 'stage' | 'unstage',
+  ): Promise<void> => {
+    if (!path || busy || files.length === 0) return
+    setBusy(true)
+    setPendingOp(action)
+    setMessage({ text: t('panel.running', { label: t(action === 'stage' ? 'changes.stageAll' : 'changes.unstageAll') }), kind: 'ok' })
+    const outcome = await runBatch(files, async (file) => {
+      try {
+        return await (action === 'stage' ? api.stageFile(path, file) : api.unstageFile(path, file))
+      } catch (error) {
+        return { ok: false as const, error: { code: 'internal', message: error instanceof Error ? error.message : String(error) } }
+      }
+    })
+    if (outcome.failure === null) {
+      setMessage({ text: t(action === 'stage' ? 'changes.stageAllDone' : 'changes.unstageAllDone', { count: String(outcome.done) }), kind: 'ok' })
+    } else {
+      // 报告已完成数量，绝不把「部分成功」谎报成成功。
+      setMessage({
+        text: t('changes.batchFailed', {
+          count: String(outcome.done),
+          reason: tError(outcome.failure.code, outcome.failure.message),
+        }),
+        kind: 'err',
+      })
+    }
+    void refreshStatus()
+    void load()
+    onRefreshStatus?.()
+    setPendingOp(null)
+    setBusy(false)
+  }, [path, api, busy, t, refreshStatus, load, onRefreshStatus])
 
   /**
    * 依据暂存区变更自动生成提交信息并回填输入框。
@@ -1088,10 +1153,15 @@ export function GitPanel(props: {
       <div className="dsh-gp-write">
         <div className="dsh-gp-write-row">
           <div className="dsh-gp-input-wrap">
-            <input className="dsh-gp-input" value={commitMsg} placeholder={t('write.commit.placeholder')}
+            <textarea ref={commitRef} className="dsh-gp-input dsh-gp-textarea" rows={1} value={commitMsg}
+              placeholder={t('write.commit.placeholder')}
               onChange={(event) => setCommitMsg(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter' && commitMsg.trim() !== '') void runWrite('commit')
+                // Enter 提交、Shift+Enter 换行：多行信息需要能写正文。
+                if (event.key === 'Enter' && !event.shiftKey && commitMsg.trim() !== '') {
+                  event.preventDefault()
+                  void runWrite('commit')
+                }
               }} />
             <button type="button" className="dsh-gp-input-btn"
               disabled={busy || generating}
@@ -1101,7 +1171,7 @@ export function GitPanel(props: {
               onFocus={(event) => showTip(event.currentTarget, t('write.commit.generate'))}
               onBlur={hideTip}
               onClick={() => void generateMessage()}>
-              {generating ? <span className="dsh-gp-spinner" role="status" aria-label={t('write.commit.generating')} /> : icon('star', 13)}
+              {generating ? <span className="dsh-gp-spinner" role="status" aria-label={t('write.commit.generating')} /> : icon('sparkles', 13)}
             </button>
           </div>
           <button className="dsh-gp-btn" disabled={busy || commitMsg.trim() === ''}
@@ -1132,7 +1202,7 @@ export function GitPanel(props: {
 
           return (
             <div className="dsh-gp-changes">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 0 4px', fontSize: 11, color: 'var(--muted)' }}>
+              <div className="dsh-gp-changes-title">
                 <span>{t('changes.title')} ({changes.length})</span>
                 <button type="button" className="dsh-gp-btn"
                   title={conflicts.length > 0 ? t('changes.sendConflictsToChat') : t('changes.sendToChat')}
@@ -1184,6 +1254,13 @@ export function GitPanel(props: {
                 <div className="dsh-gp-changes-group">
                   <div className="dsh-gp-changes-group-head">
                     <span>{t('changes.staged')} ({staged.length})</span>
+                    <div className="dsh-gp-group-actions">
+                      <RowAction icon="minus" label={t('changes.unstageAll')}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void runBatchStage(staged.map((c) => c.file), 'unstage')
+                        }} />
+                    </div>
                   </div>
                   <div className="dsh-gp-changes-list">
                     {staged.map((c) => (
@@ -1218,6 +1295,13 @@ export function GitPanel(props: {
                 <div className="dsh-gp-changes-group">
                   <div className="dsh-gp-changes-group-head">
                     <span>{t('changes.unstaged')} ({unstaged.length})</span>
+                    <div className="dsh-gp-group-actions">
+                      <RowAction icon="plus" label={t('changes.stageAll')}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void runBatchStage(unstaged.map((c) => c.file), 'stage')
+                        }} />
+                    </div>
                   </div>
                   <div className="dsh-gp-changes-list">
                     {unstaged.map((c) => (
